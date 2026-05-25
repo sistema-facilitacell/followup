@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FACILITA CELL — Sistema de Follow-up</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script type="module">
+// ---- FIREBASE INIT ----
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDO6rgNsuJtR_kcD0Sp83xYwov8b-wWiCQ",
+  authDomain: "followup-f13bc.firebaseapp.com",
+  projectId: "followup-f13bc",
+  storageBucket: "followup-f13bc.firebasestorage.app",
+  messagingSenderId: "54050804944",
+  appId: "1:54050804944:web:4ee382b4568b16790c7ad5"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const vouchersCol = collection(db, 'vouchers');
+
+// Expose Firestore helpers to window for non-module scripts
+window._fb = { db, collection, doc, getDocs, setDoc, deleteDoc, updateDoc, onSnapshot, query, orderBy, vouchersCol };
+
+// Load initial vouchers and set up real-time listener
+window._fbReady = false;
+onSnapshot(query(vouchersCol, orderBy('criado', 'desc')), (snapshot) => {
+  window.voucherDB = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+  window._fbReady = true;
+  // Re-render if tab is visible
+  if (typeof renderTabelaVouchers === 'function') renderTabelaVouchers();
+  // Update header stats
+  const el = document.getElementById('tot-msgs');
+  if (el && typeof renderAll === 'function') renderAll();
+});
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --preto:#0a0a0a;--dark:#111318;--card:#1a1d24;--card2:#20242e;
+  --laranja:#ff6a00;--amarelo:#ffd200;--verde:#00e676;--azul:#00b0ff;
+  --rosa:#ff4081;--roxo:#d500f9;--ciano:#00e5ff;--borda:#2a2d38;
+  --txt:#e8eaf0;--txt2:#8b91a8;--txt3:#555c73;
+}
+body{background:var(--preto);color:var(--txt);font-family:'Nunito',sans-serif;min-height:100vh;overflow-x:hidden}
+header{background:linear-gradient(135deg,#0f1117 0%,#1a1220 50%,#0f1117 100%);border-bottom:1px solid var(--borda);padding:0 1.5rem;position:sticky;top:0;z-index:100}
+.header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:38px;height:38px;background:var(--laranja);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo-txt{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:#fff}
+.logo-sub{font-size:10px;color:var(--laranja);letter-spacing:3px;text-transform:uppercase;display:block;line-height:1}
+.stats-bar{display:flex;gap:20px}
+.stat{text-align:center}
+.stat-n{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--amarelo);line-height:1}
+.stat-l{font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px}
+.main{max-width:1100px;margin:0 auto;padding:1.5rem}
+.search-row{display:flex;gap:10px;margin-bottom:1.25rem}
+.search-wrap{flex:1;position:relative}
+.search-wrap svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.4}
+.search-wrap input{width:100%;background:var(--card);border:1px solid var(--borda);border-radius:10px;padding:10px 12px 10px 38px;color:var(--txt);font-size:14px;font-family:'Nunito',sans-serif;outline:none;transition:.2s}
+.search-wrap input:focus{border-color:var(--laranja)}
+.search-wrap input::placeholder{color:var(--txt3)}
+#btn-nova{background:var(--laranja);border:none;border-radius:10px;padding:10px 18px;color:#fff;font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:.2s}
+#btn-nova:hover{background:#ff8533;transform:translateY(-1px)}
+.cats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem}
+.cat-btn{border:none;border-radius:20px;padding:6px 14px;font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.2s;letter-spacing:.3px}
+.cat-btn .cnt{font-size:10px;padding:1px 6px;border-radius:8px;font-weight:800}
+.cat-urgencia{background:#1a0f00;color:#ff9900;border:1px solid #3d2200}.cat-urgencia.ativo{background:#ff6a00;color:#fff;border-color:#ff6a00}
+.cat-urgencia .cnt{background:#3d2200;color:#ff9900}.cat-urgencia.ativo .cnt{background:rgba(0,0,0,.25);color:#fff}
+.cat-zona{background:#1a0014;color:#d500f9;border:1px solid #4a004d}.cat-zona.ativo{background:#d500f9;color:#fff;border-color:#d500f9}
+.cat-zona .cnt{background:#4a004d;color:#d500f9}.cat-zona.ativo .cnt{background:rgba(0,0,0,.25);color:#fff}
+.cat-parcelamento{background:#001a2e;color:#00b0ff;border:1px solid #003d6b}.cat-parcelamento.ativo{background:#00b0ff;color:#000;border-color:#00b0ff}
+.cat-parcelamento .cnt{background:#003d6b;color:#00b0ff}.cat-parcelamento.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.cat-promocao{background:#1a1500;color:#ffd200;border:1px solid #3d3000}.cat-promocao.ativo{background:#ffd200;color:#000;border-color:#ffd200}
+.cat-promocao .cnt{background:#3d3000;color:#ffd200}.cat-promocao.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.cat-exclusividade{background:#001a1a;color:#00e5ff;border:1px solid #003d3d}.cat-exclusividade.ativo{background:#00e5ff;color:#000;border-color:#00e5ff}
+.cat-exclusividade .cnt{background:#003d3d;color:#00e5ff}.cat-exclusividade.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.cat-reengajamento{background:#001a08;color:#00e676;border:1px solid #003d15}.cat-reengajamento.ativo{background:#00e676;color:#000;border-color:#00e676}
+.cat-reengajamento .cnt{background:#003d15;color:#00e676}.cat-reengajamento.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.cat-beneficios{background:#1a0011;color:#ff4081;border:1px solid #3d0028}.cat-beneficios.ativo{background:#ff4081;color:#fff;border-color:#ff4081}
+.cat-beneficios .cnt{background:#3d0028;color:#ff4081}.cat-beneficios.ativo .cnt{background:rgba(0,0,0,.25);color:#fff}
+.cat-audio{background:#0f0a1a;color:#9c6fff;border:1px solid #2d1f4d}.cat-audio.ativo{background:#7c4dff;color:#fff;border-color:#7c4dff}
+.cat-audio .cnt{background:#2d1f4d;color:#9c6fff}.cat-audio.ativo .cnt{background:rgba(0,0,0,.25);color:#fff}
+.cat-todas{background:var(--card);color:var(--txt);border:1px solid var(--borda)}.cat-todas.ativo{background:var(--txt);color:#000;border-color:var(--txt)}
+.cat-todas .cnt{background:var(--borda);color:var(--txt2)}.cat-todas.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.res-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem}
+.res-txt{font-size:13px;color:var(--txt2)}.res-txt strong{color:var(--amarelo)}
+.btn-limpar{background:none;border:1px solid var(--borda);border-radius:8px;color:var(--txt2);padding:4px 10px;font-size:12px;font-family:'Nunito',sans-serif;cursor:pointer}
+.btn-limpar:hover{color:var(--txt)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.msg-card{background:var(--card);border:1px solid var(--borda);border-radius:14px;overflow:hidden;transition:.2s;animation:fadeIn .3s ease}
+.msg-card:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,.4)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.card-top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0}
+.badge{font-size:10px;font-weight:800;padding:3px 10px;border-radius:10px;letter-spacing:.5px;text-transform:uppercase}
+.num{font-size:11px;color:var(--txt3);font-weight:700}
+.card-body{padding:10px 14px}
+.msg-texto{font-size:13.5px;line-height:1.65;color:var(--txt);white-space:pre-line;word-break:break-word}
+.msg-titulo{font-size:13px;font-weight:800;color:var(--txt);margin-bottom:6px}
+.msg-audio{font-size:12.5px;line-height:1.7;color:var(--txt2);white-space:pre-line}
+.msg-edit{width:100%;background:var(--card2);border:1px solid var(--laranja);border-radius:8px;color:var(--txt);font-family:'Nunito',sans-serif;font-size:13px;padding:10px;resize:vertical;min-height:120px;outline:none;line-height:1.65}
+.card-actions{display:flex;gap:6px;padding:0 14px 12px;flex-wrap:wrap}
+.btn-act{display:flex;align-items:center;gap:4px;padding:5px 11px;border-radius:8px;font-size:11px;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;border:1px solid;transition:.15s;letter-spacing:.3px}
+.btn-copiar{background:#0d2a1a;border-color:#1a5c35;color:#00e676}.btn-copiar:hover{background:#1a5c35}
+.btn-copiar.ok{background:#00e676;color:#000;border-color:#00e676}
+.btn-editar{background:#1a0d00;border-color:#3d2200;color:#ff9900}.btn-editar:hover{background:#3d2200}
+.btn-salvar{background:#ff6a00;border-color:#ff6a00;color:#fff}.btn-salvar:hover{background:#ff8533}
+.btn-cancelar{background:var(--card2);border-color:var(--borda);color:var(--txt2)}.btn-cancelar:hover{background:var(--borda)}
+.btn-excluir{background:#1a0006;border-color:#3d0013;color:#ff4081;margin-left:auto}.btn-excluir:hover{background:#3d0013}
+.badge-urgencia{background:#3d2200;color:#ff9900}
+.badge-zona{background:#4a004d;color:#e040fb}
+.badge-parcelamento{background:#003d6b;color:#40c4ff}
+.badge-promocao{background:#3d3000;color:#ffd740}
+.badge-exclusividade{background:#003d3d;color:#40e0ff}
+.badge-reengajamento{background:#003d15;color:#69f0ae}
+.badge-beneficios{background:#3d0028;color:#ff80ab}
+.badge-audio{background:#2d1f4d;color:#b388ff}
+.card-line{height:2px;width:100%}
+.line-urgencia{background:linear-gradient(90deg,#ff6a00,transparent)}
+.line-zona{background:linear-gradient(90deg,#d500f9,transparent)}
+.line-parcelamento{background:linear-gradient(90deg,#00b0ff,transparent)}
+.line-promocao{background:linear-gradient(90deg,#ffd200,transparent)}
+.line-exclusividade{background:linear-gradient(90deg,#00e5ff,transparent)}
+.line-reengajamento{background:linear-gradient(90deg,#00e676,transparent)}
+.line-beneficios{background:linear-gradient(90deg,#ff4081,transparent)}
+.line-audio{background:linear-gradient(90deg,#7c4dff,transparent)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.overlay.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--borda);border-radius:18px;padding:24px;width:min(560px,95vw);animation:fadeIn .2s ease}
+.modal h3{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:16px;color:#fff}
+.modal label{font-size:12px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:6px}
+.modal select,.modal textarea{width:100%;background:var(--card2);border:1px solid var(--borda);border-radius:10px;color:var(--txt);font-family:'Nunito',sans-serif;font-size:14px;padding:10px 12px;outline:none;margin-bottom:14px}
+.modal select:focus,.modal textarea:focus{border-color:var(--laranja)}
+.modal textarea{min-height:130px;resize:vertical;line-height:1.65}
+.modal-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+.btn-confirm{background:var(--laranja);border:none;border-radius:10px;padding:10px 22px;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;cursor:pointer;transition:.2s}
+.btn-confirm:hover{background:#ff8533}
+.btn-cancel{background:var(--card2);border:1px solid var(--borda);border-radius:10px;padding:10px 22px;color:var(--txt2);font-family:'Nunito',sans-serif;font-weight:700;font-size:14px;cursor:pointer}
+.dica{background:var(--card);border:1px solid var(--borda);border-radius:14px;padding:16px 18px;margin-top:1.5rem}
+.dica h4{font-size:13px;font-weight:800;color:var(--amarelo);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+.dica p{font-size:12px;color:var(--txt2);margin-bottom:4px;line-height:1.6}
+.dica p:last-child{margin:0}
+.dica strong{color:var(--txt)}
+.vazio{text-align:center;padding:3rem 0;color:var(--txt3);grid-column:1/-1}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--preto)}::-webkit-scrollbar-thumb{background:var(--borda);border-radius:3px}
+.cat-voucher{background:#1a1400;color:#ffd200;border:1px solid #4d3c00}.cat-voucher.ativo{background:#ffd200;color:#000;border-color:#ffd200}
+.cat-voucher .cnt{background:#4d3c00;color:#ffd200}.cat-voucher.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.badge-voucher{background:#4d3c00;color:#ffd740}
+.line-voucher{background:linear-gradient(90deg,#ffd200,transparent)}
+.cat-entrada{background:#001a0a;color:#00e676;border:1px solid #004d1f}.cat-entrada.ativo{background:#00e676;color:#000;border-color:#00e676}
+.cat-entrada .cnt{background:#004d1f;color:#00e676}.cat-entrada.ativo .cnt{background:rgba(0,0,0,.2);color:#000}
+.badge-entrada{background:#003d15;color:#69f0ae}
+.line-entrada{background:linear-gradient(90deg,#00e676,transparent)}
+#btn-voucher{background:linear-gradient(135deg,#ffd200,#ff9900);border:none;border-radius:10px;padding:10px 16px;color:#000;font-family:'Nunito',sans-serif;font-size:13px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:.2s;letter-spacing:.3px}
+#btn-voucher:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(255,210,0,.35)}
+/* Voucher Modal */
+.voucher-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.voucher-overlay.show{display:flex}
+.voucher-wrap{width:min(420px,95vw);animation:fadeIn .3s ease}
+.voucher-card{background:#111318;border-radius:20px;overflow:hidden;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.8)}
+.voucher-header{background:linear-gradient(135deg,#ff6a00 0%,#ff9900 50%,#ffd200 100%);padding:22px 24px 18px;text-align:center;position:relative}
+.voucher-header::after{content:'';position:absolute;bottom:-10px;left:0;right:0;height:20px;background:linear-gradient(135deg,#111318 25%,transparent 25%) -10px 0,linear-gradient(225deg,#111318 25%,transparent 25%) -10px 0,linear-gradient(315deg,#111318 25%,transparent 25%),linear-gradient(45deg,#111318 25%,transparent 25%);background-size:20px 20px;background-color:#111318;z-index:2}
+.voucher-brand{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:4px;color:rgba(0,0,0,.6);margin-bottom:2px}
+.voucher-logo{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:3px;color:#000;line-height:1}
+.voucher-sub{font-size:10px;font-weight:800;letter-spacing:3px;color:rgba(0,0,0,.55);text-transform:uppercase;margin-top:2px}
+.voucher-body{padding:30px 24px 20px;text-align:center;position:relative;z-index:1}
+.voucher-pct{font-family:'Bebas Neue',sans-serif;font-size:88px;line-height:1;background:linear-gradient(135deg,#ffd200,#ff9900);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-2px}
+.voucher-desc{font-size:15px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:1.5px;margin-top:-6px;margin-bottom:4px}
+.voucher-desc2{font-size:11px;color:var(--txt2);letter-spacing:.5px;margin-bottom:20px}
+.voucher-divider{display:flex;align-items:center;gap:10px;margin:16px 0}
+.voucher-divider::before,.voucher-divider::after{content:'';flex:1;height:1px;background:repeating-linear-gradient(90deg,var(--borda) 0,var(--borda) 6px,transparent 6px,transparent 12px)}
+.voucher-divider span{font-size:16px}
+.voucher-code-label{font-size:10px;font-weight:700;color:var(--txt3);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.voucher-code{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:8px;color:var(--amarelo);background:var(--card2);border:1px dashed var(--borda);border-radius:10px;padding:8px 16px;display:inline-block;margin-bottom:16px}
+.voucher-warn{background:rgba(255,64,129,.08);border:1px solid rgba(255,64,129,.25);border-radius:10px;padding:10px 14px;font-size:11px;color:#ff80ab;font-weight:700;letter-spacing:.3px;text-align:center;margin-bottom:16px}
+.voucher-warn strong{color:#ff4081}
+.voucher-validade{font-size:11px;color:var(--txt3);margin-bottom:20px}
+.voucher-validade strong{color:var(--txt2)}
+.voucher-btns{display:flex;gap:8px}
+.btn-compartilhar{flex:1;background:linear-gradient(135deg,#25d366,#128c7e);border:none;border-radius:10px;padding:12px;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-compartilhar:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(37,211,102,.3)}
+.btn-copiar-voucher{flex:1;background:var(--card2);border:1px solid var(--borda);border-radius:10px;padding:12px;color:var(--txt);font-family:'Nunito',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-copiar-voucher:hover{border-color:var(--amarelo);color:var(--amarelo)}
+.btn-copiar-voucher.ok{background:var(--amarelo);color:#000;border-color:var(--amarelo)}
+.btn-fechar-voucher{width:100%;background:none;border:none;color:var(--txt3);font-family:'Nunito',sans-serif;font-size:12px;cursor:pointer;padding:12px 0 0;transition:.2s}
+.btn-fechar-voucher:hover{color:var(--txt)}
+.voucher-cliente-box{background:var(--card2);border:1px solid var(--borda);border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:left}
+.voucher-cliente-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0}
+.voucher-cliente-row:first-child{border-bottom:1px solid var(--borda);padding-bottom:8px;margin-bottom:5px}
+.voucher-cliente-label{font-size:11px;color:var(--txt2);font-weight:700}
+.voucher-cliente-val{font-size:13px;color:var(--txt);font-weight:800}
+.vm-status-badge{font-size:10px;font-weight:800;padding:3px 12px;border-radius:10px;letter-spacing:.8px;text-transform:uppercase}
+.vm-status-ativo{background:#0d2a1a;color:#00e676;border:1px solid #1a5c35}
+.vm-status-usado{background:#001a2e;color:#40c4ff;border:1px solid #003d6b}
+.vm-status-expirado{background:#1a0006;color:#ff4081;border:1px solid #3d0013}
+@media(max-width:600px){.stats-bar{display:none}.grid{grid-template-columns:1fr}header{padding:0 1rem}.main{padding:1rem}}
+/* Nav tabs */
+.nav-tabs{display:flex;gap:0;border-top:1px solid var(--borda);max-width:1100px;margin:0 auto;padding:0 1.5rem}
+.nav-tab{background:none;border:none;border-bottom:2px solid transparent;padding:10px 18px;color:var(--txt2);font-family:'Nunito',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:.2s;letter-spacing:.3px}
+.nav-tab.ativo{color:var(--amarelo);border-bottom-color:var(--amarelo)}
+.nav-tab:hover:not(.ativo){color:var(--txt)}
+/* Voucher Control Panel */
+.vc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem}
+.vc-stat-card{background:var(--card);border:1px solid var(--borda);border-radius:12px;padding:14px 16px;text-align:center}
+.vc-stat-n{font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;color:var(--txt)}
+.vc-stat-l{font-size:10px;color:var(--txt2);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.vc-ativo{border-color:#1a5c35}.vc-ativo .vc-stat-n{color:#00e676}
+.vc-usado{border-color:#003d6b}.vc-usado .vc-stat-n{color:#00b0ff}
+.vc-expirado{border-color:#3d0013}.vc-expirado .vc-stat-n{color:#ff4081}
+.vc-form-card{background:var(--card);border:1px solid var(--borda);border-radius:14px;padding:18px 20px;margin-bottom:1.25rem}
+.vc-form-title{font-size:13px;font-weight:800;color:var(--amarelo);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px}
+.vc-form-grid{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.vc-field{display:flex;flex-direction:column;gap:5px}
+.vc-label{font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.6px}
+.vc-input{background:var(--card2);border:1px solid var(--borda);border-radius:8px;color:var(--txt);font-family:'Nunito',sans-serif;font-size:13px;padding:8px 10px;outline:none;transition:.2s}
+.vc-input:focus{border-color:var(--amarelo)}
+.vc-input::placeholder{color:var(--txt3)}
+.vc-form-btns{display:flex;gap:8px}
+.vc-btn-gerar{background:linear-gradient(135deg,#ffd200,#ff9900);border:none;border-radius:10px;padding:10px 22px;color:#000;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:.2s}
+.vc-btn-gerar:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(255,210,0,.3)}
+.vc-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:1rem}
+.vc-filtros{display:flex;gap:4px}
+.vc-filtro{background:var(--card);border:1px solid var(--borda);border-radius:8px;color:var(--txt2);padding:5px 12px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;transition:.15s}
+.vc-filtro.ativo{background:var(--amarelo);color:#000;border-color:var(--amarelo)}
+.vc-filtro:hover:not(.ativo){color:var(--txt)}
+.vc-btn-limpar-tudo{background:none;border:1px solid #3d0013;border-radius:8px;color:#ff4081;padding:5px 12px;font-size:11px;font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;transition:.15s;margin-left:auto}
+.vc-btn-limpar-tudo:hover{background:#1a0006}
+/* Validar voucher */
+.vc-validar-card{background:var(--card);border:1px solid var(--borda);border-radius:14px;padding:18px 20px;margin-bottom:1.25rem;border-left:3px solid var(--amarelo)}
+.vc-validar-title{font-size:13px;font-weight:800;color:var(--amarelo);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.vc-validar-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.vc-val-input{flex:1;min-width:220px;font-family:monospace!important;font-size:15px!important;letter-spacing:2px;text-transform:uppercase}
+.vc-btn-validar{background:var(--amarelo);border:none;border-radius:8px;padding:9px 18px;color:#000;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:.2s;white-space:nowrap}
+.vc-btn-validar:hover{background:#ffe44d}
+.vc-btn-usar-direto{background:linear-gradient(135deg,#00e676,#00c853);border:none;border-radius:8px;padding:9px 18px;color:#000;font-family:'Nunito',sans-serif;font-weight:800;font-size:13px;cursor:pointer;transition:.2s;white-space:nowrap;animation:pulse-green .8s infinite alternate}
+@keyframes pulse-green{from{box-shadow:0 0 0 0 rgba(0,230,118,.4)}to{box-shadow:0 0 0 8px rgba(0,230,118,0)}}
+.vc-resultado{margin-top:14px;border-radius:12px;padding:14px 16px;border:1px solid}
+.vc-resultado-ativo{background:rgba(0,230,118,.06);border-color:#1a5c35}
+.vc-resultado-usado{background:rgba(0,176,255,.06);border-color:#003d6b}
+.vc-resultado-expirado{background:rgba(255,64,129,.06);border-color:#3d0013}
+.vc-resultado-nao{background:rgba(255,106,0,.06);border-color:#3d2200}
+.vc-res-titulo{font-size:16px;font-weight:800;margin-bottom:10px}
+.vc-res-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vc-res-item{display:flex;flex-direction:column;gap:2px}
+.vc-res-label{font-size:10px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.8px}
+.vc-res-val{font-size:13px;font-weight:800;color:var(--txt)}
+.vc-table-wrap{background:var(--card);border:1px solid var(--borda);border-radius:14px;overflow:hidden}
+.vc-table{width:100%;border-collapse:collapse}
+.vc-table th{background:var(--card2);padding:10px 12px;text-align:left;font-size:10px;font-weight:800;color:var(--txt2);text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--borda)}
+.vc-table td{padding:10px 12px;font-size:12px;color:var(--txt);border-bottom:1px solid rgba(42,45,56,.5);vertical-align:middle}
+.vc-table tr:last-child td{border-bottom:none}
+.vc-table tr:hover td{background:rgba(255,255,255,.02)}
+.vc-code{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:3px;color:var(--amarelo)}
+.vc-badge{font-size:10px;font-weight:800;padding:3px 9px;border-radius:8px;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.vc-badge-ativo{background:#0d2a1a;color:#00e676;border:1px solid #1a5c35}
+.vc-badge-usado{background:#001a2e;color:#40c4ff;border:1px solid #003d6b}
+.vc-badge-expirado{background:#1a0006;color:#ff4081;border:1px solid #3d0013}
+.vc-actions{display:flex;gap:4px;flex-wrap:nowrap}
+.vc-act{border:1px solid;border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;font-family:'Nunito',sans-serif;cursor:pointer;transition:.15s;white-space:nowrap}
+.vc-act-usar{background:#001a2e;border-color:#003d6b;color:#40c4ff}.vc-act-usar:hover{background:#003d6b}
+.vc-act-whats{background:#0d2a1a;border-color:#1a5c35;color:#00e676}.vc-act-whats:hover{background:#1a5c35}
+.vc-act-copiar{background:var(--card2);border-color:var(--borda);color:var(--txt2)}.vc-act-copiar:hover{border-color:var(--amarelo);color:var(--amarelo)}
+.vc-act-del{background:#1a0006;border-color:#3d0013;color:#ff4081}.vc-act-del:hover{background:#3d0013}
+.vc-vazio{text-align:center;padding:3rem;color:var(--txt3)}
+@media(max-width:700px){.vc-form-grid{grid-template-columns:1fr 1fr}.vc-stats{grid-template-columns:repeat(2,1fr)}.vc-table-wrap{overflow-x:auto}}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-icon">&#128242;</div>
+      <div>
+        <span class="logo-txt">FACILITA CELL</span>
+        <span class="logo-sub">Sistema de Follow-up</span>
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-n" id="tot-msgs">0</div><div class="stat-l">Mensagens</div></div>
+      <div class="stat"><div class="stat-n" id="tot-copiados">0</div><div class="stat-l">Copiadas</div></div>
+      <div class="stat"><div class="stat-n">18x</div><div class="stat-l">Boleto</div></div>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab ativo" id="tab-msgs" onclick="mudarTab('msgs')">📋 Mensagens</button>
+    <button class="nav-tab" id="tab-vouchers" onclick="mudarTab('vouchers')">🎫 Controle de Vouchers</button>
+  </div>
+</header>
+
+<!-- ===== VIEW: MENSAGENS ===== -->
+<div class="main" id="view-msgs">
+  <!-- Info da loja -->
+  <div style="background:#111318;border:1px solid #2a2d38;border-left:3px solid #ff6a00;border-radius:12px;padding:12px 16px;margin-bottom:1.1rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:22px">📍</span>
+      <div>
+        <div style="font-size:13px;font-weight:800;color:#fff">Av. Morenitas, 78 — Jardim das Flores, Porto Meira</div>
+        <div style="font-size:11px;color:#8b91a8;margin-top:1px">Em frente ao Panorama &nbsp;•&nbsp; 🕐 9h às 17h50 sem fechar pro almoço</div>
+      </div>
+    </div>
+    <div style="font-size:10px;font-weight:700;background:#1a0f00;color:#ff9900;border:1px solid #3d2200;border-radius:8px;padding:3px 10px;white-space:nowrap">ENDEREÇO DA LOJA</div>
+  </div>
+  <div class="search-row">
+    <div class="search-wrap">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/></svg>
+      <input type="text" id="busca" placeholder="Buscar mensagem...">
+    </div>
+    <button id="btn-nova" onclick="abrirModal()">
+      <svg width="14" height="14" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"/></svg>
+      Nova Mensagem
+    </button>
+  </div>
+  <div class="cats" id="cats"></div>
+  <div class="res-bar">
+    <div class="res-txt">Mostrando <strong id="res-count">0</strong> mensagens</div>
+    <button class="btn-limpar" id="btn-limpar" style="display:none" onclick="limparBusca()">&#10005; Limpar busca</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <div class="dica">
+    <h4>&#128161; Dicas de Uso &mdash; FACILITA CELL</h4>
+    <p>&bull; Substitua <strong>[NOME]</strong> pelo nome real do cliente antes de enviar</p>
+    <p>&bull; <strong>Clique em Editar</strong> para personalizar qualquer mensagem direto na tela</p>
+    <p>&bull; Para os <strong>Audios</strong>: grave o roteiro com sua voz natural no WhatsApp, sem ler roboticamente</p>
+    <p>&bull; Melhores horarios de disparo: <strong>9h-11h30</strong> e <strong>16h-19h</strong> &mdash; evite domingos pela manha</p>
+    <p>&bull; Mensagens de <strong>Zona de Conforto</strong> funcionam melhor com clientes que ja visitaram a loja mas nao compraram</p>
+    <p>&bull; Nas mensagens <strong>🎫 Voucher Urgência</strong> substitua <strong>[CODIGO_VOUCHER]</strong> pelo código real gerado na aba "Controle de Vouchers" e <strong>[HORAS]</strong> pelo tempo restante</p>
+  </div>
+</div>
+
+<!-- ===== VIEW: CONTROLE DE VOUCHERS ===== -->
+<div class="main" id="view-vouchers" style="display:none">
+
+  <!-- Stats cards -->
+  <div class="vc-stats">
+    <div class="vc-stat-card">
+      <div class="vc-stat-n" id="vs-total">0</div>
+      <div class="vc-stat-l">Total Gerados</div>
+    </div>
+    <div class="vc-stat-card vc-ativo">
+      <div class="vc-stat-n" id="vs-ativos">0</div>
+      <div class="vc-stat-l">Ativos</div>
+    </div>
+    <div class="vc-stat-card vc-usado">
+      <div class="vc-stat-n" id="vs-usados">0</div>
+      <div class="vc-stat-l">Usados</div>
+    </div>
+    <div class="vc-stat-card vc-expirado">
+      <div class="vc-stat-n" id="vs-expirados">0</div>
+      <div class="vc-stat-l">Expirados</div>
+    </div>
+  </div>
+
+  <!-- Create voucher form -->
+  <div class="vc-form-card">
+    <div class="vc-form-title">🎫 Criar Novo Voucher — 50% na Primeira Parcela &nbsp;|&nbsp; <span style="font-size:11px;font-weight:700;color:var(--txt2)">Validade: ⚡12h &nbsp;🕐24h &nbsp;🕑48h &nbsp;🕒72h</span></div>
+    <div class="vc-form-grid">
+      <div class="vc-field">
+        <label class="vc-label">Nome do Cliente</label>
+        <input type="text" id="vc-nome" class="vc-input" placeholder="Ex: João Silva">
+      </div>
+      <div class="vc-field">
+        <label class="vc-label">CPF do Cliente</label>
+        <input type="text" id="vc-cpf" class="vc-input" placeholder="000.000.000-00" maxlength="14" oninput="mascaraCpf(this)">
+      </div>
+      <div class="vc-field">
+        <label class="vc-label">Validade do Voucher</label>
+        <select id="vc-validade" class="vc-input">
+          <option value="12">⚡ 12 horas</option>
+          <option value="24" selected>🕐 24 horas</option>
+          <option value="48">🕑 48 horas</option>
+          <option value="72">🕒 72 horas</option>
+        </select>
+      </div>
+      <div class="vc-field">
+        <label class="vc-label">Quantidade de Vouchers</label>
+        <input type="number" id="vc-qtd" class="vc-input" value="1" min="1" max="50" placeholder="1">
+      </div>
+    </div>
+    <div class="vc-form-btns">
+      <button class="vc-btn-gerar" onclick="gerarVouchersLote()">🎫 Gerar Voucher(s)</button>
+    </div>
+  </div>
+
+  <!-- Validate voucher -->
+  <div class="vc-validar-card">
+    <div class="vc-validar-title">🔍 Validar Voucher na Loja</div>
+    <div class="vc-validar-row">
+      <input type="text" id="vc-val-codigo" class="vc-input vc-val-input" placeholder="Digite o código do voucher (Ex: FC-AB3K9X)" maxlength="9" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')validarVoucher()">
+      <button class="vc-btn-validar" onclick="validarVoucher()">🔍 Validar</button>
+      <button class="vc-btn-usar-direto" id="vc-btn-usar-direto" style="display:none" onclick="usarVoucherValidado()">✔ Confirmar Uso</button>
+    </div>
+    <div id="vc-resultado-validacao" class="vc-resultado" style="display:none"></div>
+  </div>
+
+  <!-- Search and filters -->
+  <div class="vc-toolbar">
+    <div class="search-wrap" style="flex:1;max-width:320px">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/></svg>
+      <input type="text" id="vc-busca" placeholder="Buscar por nome, CPF ou código..." oninput="renderTabelaVouchers()">
+    </div>
+    <div class="vc-filtros">
+      <button class="vc-filtro ativo" data-f="todos" onclick="setFiltroVoucher(this,'todos')">Todos</button>
+      <button class="vc-filtro" data-f="ativo" onclick="setFiltroVoucher(this,'ativo')">✅ Ativos</button>
+      <button class="vc-filtro" data-f="usado" onclick="setFiltroVoucher(this,'usado')">🔵 Usados</button>
+      <button class="vc-filtro" data-f="expirado" onclick="setFiltroVoucher(this,'expirado')">⛔ Expirados</button>
+    </div>
+    <button class="vc-btn-limpar-tudo" onclick="limparTodosVouchers()">🗑️ Limpar todos</button>
+  </div>
+
+  <!-- Table -->
+  <div class="vc-table-wrap">
+    <table class="vc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Código</th>
+          <th>Cliente</th>
+          <th>CPF</th>
+          <th>Criado em</th>
+          <th>Válido até</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="vc-tbody"></tbody>
+    </table>
+    <div id="vc-vazio" class="vc-vazio" style="display:none">
+      <p style="font-size:32px">🎫</p>
+      <p>Nenhum voucher encontrado</p>
+      <p style="font-size:12px;margin-top:6px">Crie vouchers usando o formulário acima</p>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3>&#10133; Nova Mensagem</h3>
+    <label>Categoria</label>
+    <select id="nova-cat">
+      <option value="urgencia">Urgencia</option>
+      <option value="zona">Zona de Conforto</option>
+      <option value="parcelamento">Parcelamento</option>
+      <option value="promocao">Promocao</option>
+      <option value="exclusividade">Exclusividade</option>
+      <option value="reengajamento">Reengajamento</option>
+      <option value="beneficios">Beneficios</option>
+      <option value="audio">Audio</option>
+      <option value="voucher">Voucher 50%</option>
+      <option value="entrada">Entrada R$150 + Voucher R$50</option>
+    </select>
+    <label>Texto da mensagem</label>
+    <textarea id="nova-texto" placeholder="Digite sua mensagem... Use [NOME] para o nome do cliente"></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+      <button class="btn-confirm" onclick="salvarNova()">Salvar Mensagem</button>
+    </div>
+  </div>
+</div>
+<!-- ===== MODAL: PREENCHER VOUCHER NA MENSAGEM ===== -->
+<div class="overlay" id="overlay-voucher-pick" style="z-index:250">
+  <div class="modal" style="width:min(620px,96vw);max-height:90vh;overflow-y:auto">
+    <h3>📲 Enviar com Voucher</h3>
+    <p style="font-size:13px;color:var(--txt2);margin-bottom:14px">Escolha um voucher ativo para preencher o código e tempo automaticamente na mensagem.</p>
+    <div id="vp-lista" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+    <div id="vp-preview" style="display:none">
+      <div style="font-size:11px;font-weight:800;color:var(--amarelo);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">📋 Mensagem Pronta:</div>
+      <textarea id="vp-texto-final" style="width:100%;background:var(--card2);border:1px solid var(--laranja);border-radius:10px;color:var(--txt);font-family:'Nunito',sans-serif;font-size:13px;padding:12px;resize:vertical;min-height:160px;outline:none;line-height:1.65"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn-confirm" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px" onclick="copiarMsgVoucher()">📋 Copiar mensagem</button>
+        <button class="btn-confirm" style="flex:1;background:linear-gradient(135deg,#25d366,#128c7e);display:flex;align-items:center;justify-content:center;gap:6px" onclick="whatsappMsgVoucher()">📲 Abrir WhatsApp</button>
+      </div>
+    </div>
+    <div class="modal-btns" style="margin-top:12px">
+      <button class="btn-cancel" onclick="fecharVoucherPick()">Fechar</button>
+    </div>
+  </div>
+</div>
+<div class="voucher-overlay" id="voucher-overlay" style="overflow-y:auto;align-items:flex-start;padding:20px 0">
+  <div class="voucher-wrap" style="width:min(760px,96vw);margin:auto">
+    <!-- Voucher visual for export -->
+    <div id="voucher-exportavel" style="background:#0a0a0a;border-radius:20px;overflow:hidden;font-family:'Nunito',sans-serif;position:relative;box-shadow:0 30px 80px rgba(0,0,0,.9)">
+
+      <!-- ===== MAIN LAYOUT: LEFT + RIGHT ===== -->
+      <div style="display:flex;min-height:320px">
+
+        <!-- ===== LEFT SECTION (black) ===== -->
+        <div style="flex:1.65;background:#0d0d0d;padding:28px 30px 24px;position:relative;overflow:hidden">
+
+          <!-- Gift icon + title row -->
+          <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px">
+            <div style="font-size:44px;line-height:1">🎁</div>
+            <div>
+              <div style="font-size:11px;font-weight:800;letter-spacing:4px;color:#ff9900;text-transform:uppercase;margin-bottom:2px">FACILITA CELL</div>
+              <div style="font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:3px;line-height:1;color:#ffffff">VOUCHER</div>
+              <div style="font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:2px;line-height:1;color:#ff9900;margin-top:-4px">de Desconto</div>
+            </div>
+          </div>
+
+          <div style="font-size:12px;color:#aaa;margin-bottom:18px;font-weight:600">Você ganhou um benefício exclusivo! ✦</div>
+
+          <!-- Big discount box -->
+          <div style="background:#1a1000;border:1.5px solid rgba(255,150,0,.35);border-radius:14px;padding:14px 20px;display:flex;align-items:center;gap:16px;margin-bottom:20px;position:relative;overflow:hidden">
+            <div style="font-family:'Bebas Neue',sans-serif;font-size:96px;line-height:1;color:#ffffff;letter-spacing:-2px">50%</div>
+            <div>
+              <div style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:.5px;text-transform:uppercase">DE DESCONTO</div>
+              <div style="background:#ff6a00;border-radius:6px;padding:5px 12px;margin-top:8px;display:inline-block">
+                <div style="font-size:13px;font-weight:800;color:#ffffff;letter-spacing:.5px;text-transform:uppercase">NA PRIMEIRA PARCELA!</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 icons row -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+            <div style="text-align:center">
+              <div style="width:36px;height:36px;border:2px solid #ff9900;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 5px;font-size:15px">%</div>
+              <div style="font-size:10px;color:#aaa;font-weight:700;line-height:1.3">Desconto somente na primeira parcela</div>
+            </div>
+            <div style="text-align:center">
+              <div style="width:36px;height:36px;border:2px solid #ff9900;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 5px;font-size:15px">👤</div>
+              <div style="font-size:10px;color:#aaa;font-weight:700;line-height:1.3">Válido apenas para novos clientes</div>
+            </div>
+            <div style="text-align:center">
+              <div style="width:36px;height:36px;border:2px solid #ff9900;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 5px;font-size:15px">🛡</div>
+              <div style="font-size:10px;color:#aaa;font-weight:700;line-height:1.3">Não cumulativo com outras promoções</div>
+            </div>
+            <div style="text-align:center">
+              <div style="width:36px;height:36px;border:2px solid #ff9900;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 5px;font-size:15px">★</div>
+              <div style="font-size:10px;color:#aaa;font-weight:700;line-height:1.3">Uso único por CPF/ cliente</div>
+            </div>
+          </div>
+
+          <!-- Code box -->
+          <div style="background:#1a0d00;border:2px solid #ff6a00;border-radius:12px;padding:12px 18px;display:flex;align-items:center;gap:14px">
+            <div style="font-size:24px">🎫</div>
+            <div>
+              <div style="font-size:10px;font-weight:800;color:#ff9900;letter-spacing:2px;text-transform:uppercase;margin-bottom:2px">CÓDIGO:</div>
+              <div style="font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:6px;color:#ffd200;line-height:1" id="vm-code">FC-000000</div>
+            </div>
+            <div style="margin-left:auto;text-align:right">
+              <div style="font-size:11px;font-style:italic;color:#aaa;font-weight:600">Aproveite seu</div>
+              <div style="font-size:14px;font-style:italic;color:#fff;font-weight:800">benefício!</div>
+              <div style="font-size:18px;margin-top:2px">🧡</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ===== DIVIDER (perforated) ===== -->
+        <div style="width:22px;background:#0d0d0d;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative">
+          <div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);width:22px;height:22px;background:#0a0a0a;border-radius:50%;z-index:2"></div>
+          <div style="position:absolute;bottom:-11px;left:50%;transform:translateX(-50%);width:22px;height:22px;background:#0a0a0a;border-radius:50%;z-index:2"></div>
+          <div style="flex:1;border-left:2px dashed rgba(255,150,0,.35);margin:22px 0"></div>
+        </div>
+
+        <!-- ===== RIGHT SECTION (orange) ===== -->
+        <div style="width:190px;background:linear-gradient(160deg,#ff8c00 0%,#ff5500 40%,#e64a00 100%);padding:22px 18px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;position:relative;overflow:hidden">
+
+          <!-- % tag at top -->
+          <div style="position:relative;z-index:1;text-align:center;margin-bottom:10px">
+            <div style="background:#111;border-radius:14px;width:70px;height:70px;display:flex;align-items:center;justify-content:center;margin:0 auto;box-shadow:0 6px 20px rgba(0,0,0,.4);position:relative">
+              <div style="font-family:'Bebas Neue',sans-serif;font-size:36px;color:#ff9900;letter-spacing:-1px">%</div>
+              <!-- Small tag string -->
+              <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:3px;height:14px;background:#333;border-radius:2px"></div>
+            </div>
+          </div>
+
+          <!-- USO ÚNICO -->
+          <div style="background:rgba(0,0,0,.3);border:2px solid rgba(255,255,255,.4);border-radius:10px;padding:10px 12px;text-align:center;width:100%;margin-bottom:10px;position:relative;z-index:1">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-bottom:2px">
+              <div style="width:20px;height:20px;background:#ff6a00;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;flex-shrink:0">✓</div>
+              <div style="font-size:13px;font-weight:900;color:#fff;letter-spacing:.5px;text-transform:uppercase;line-height:1.2">USO ÚNICO<br>POR CLIENTE!</div>
+            </div>
+            <!-- Lightning bolts -->
+            <div style="position:absolute;right:-6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:2px">
+              <div style="width:8px;height:2px;background:#fff;opacity:.5;border-radius:1px"></div>
+              <div style="width:6px;height:2px;background:#fff;opacity:.3;border-radius:1px"></div>
+              <div style="width:8px;height:2px;background:#fff;opacity:.5;border-radius:1px"></div>
+            </div>
+          </div>
+
+          <!-- VÁLIDO ATÉ -->
+          <div style="background:rgba(0,0,0,.25);border-radius:10px;padding:10px 12px;text-align:center;width:100%;margin-bottom:10px;position:relative;z-index:1">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-bottom:6px">
+              <div style="font-size:18px">🔒</div>
+              <div style="font-size:12px;font-weight:900;color:#fff;text-transform:uppercase;letter-spacing:.5px">VÁLIDO ATÉ:</div>
+            </div>
+            <div style="background:#fff;border-radius:6px;padding:6px 10px;font-size:13px;font-weight:800;color:#222;font-family:monospace;letter-spacing:1px;min-height:28px;display:flex;align-items:center;justify-content:center" id="vm-data-right">__/__/____</div>
+            <div style="margin-top:5px;font-size:10px;font-weight:700;color:rgba(255,255,255,.8)" id="vm-urgencia-right"></div>
+            <div style="margin-top:3px" id="vm-status-right"></div>
+          </div>
+
+          <!-- FACILITA CELL brand -->
+          <div style="text-align:center;position:relative;z-index:1">
+            <div style="background:rgba(0,0,0,.35);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:8px;justify-content:center">
+              <div style="font-size:22px">📱</div>
+              <div style="text-align:left">
+                <div style="font-family:'Bebas Neue',sans-serif;font-size:17px;color:#fff;letter-spacing:1px;line-height:1">Facilita Cell</div>
+                <div style="font-size:9px;color:rgba(255,255,255,.7);font-weight:700;letter-spacing:.3px">Conectando você ao melhor!</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ===== BOTTOM STRIP (client data) ===== -->
+      <div style="background:#111;border-top:1px solid rgba(255,150,0,.2);padding:14px 30px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:20px">👤</div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px">Cliente</div>
+            <div style="font-size:15px;font-weight:800;color:#fff" id="vm-nome">—</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:20px">🪪</div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px">CPF</div>
+            <div style="font-size:14px;font-weight:700;color:#ccc;font-family:monospace;letter-spacing:1px" id="vm-cpf">—</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:20px">📍</div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:1px">Loja</div>
+            <div style="font-size:11px;font-weight:700;color:#aaa">Av. Morenitas, 78 — Porto Meira</div>
+            <div style="font-size:10px;color:#666">Horário: 9h às 17h50</div>
+          </div>
+        </div>
+        <div style="background:rgba(255,106,0,.12);border:1px solid rgba(255,106,0,.3);border-radius:8px;padding:8px 14px;text-align:center">
+          <div style="font-size:10px;font-weight:800;color:#ff9900;text-transform:uppercase;letter-spacing:.5px">⚠️ Apresente na loja</div>
+          <div style="font-size:9px;color:#888;font-weight:600;margin-top:2px">Sem o voucher o desconto não é aplicado</div>
+        </div>
+      </div>
+
+    </div>
+    <!-- Botões abaixo do voucher -->
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+      <div style="display:flex;gap:8px">
+        <button class="btn-compartilhar" style="flex:1;font-size:13px;border:none;border-radius:10px;padding:12px;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#25d366,#128c7e)" onclick="compartilharWhats()">📲 WhatsApp</button>
+        <button id="vm-btn-copia" style="flex:1;font-size:13px;border:1px solid var(--borda);border-radius:10px;padding:12px;color:var(--txt);font-family:'Nunito',sans-serif;font-weight:700;cursor:pointer;background:var(--card2)" onclick="copiarVoucher()">📋 Copiar texto</button>
+      </div>
+      <button id="vm-btn-imagem" style="width:100%;background:linear-gradient(135deg,#ff6a00,#ff9900);border:none;border-radius:10px;padding:13px;color:#fff;font-family:'Nunito',sans-serif;font-weight:800;font-size:14px;cursor:pointer;letter-spacing:.5px" onclick="exportarVoucherImagem()">⬇ Salvar Voucher como Imagem (PNG)</button>
+    </div>
+    <button onclick="fecharVoucher()" style="width:100%;background:none;border:none;color:var(--txt3);font-family:'Nunito',sans-serif;font-size:12px;cursor:pointer;padding:14px 0 4px;margin-top:2px">✕ Fechar</button>
+  </div>
+</div>
+<script>
+
+const CATS = [
+  {id:'todas',label:'Todas',emoji:'🗂️'},
+  {id:'urgencia',label:'Urgência',emoji:'🔥'},
+  {id:'zona',label:'Zona de Conforto',emoji:'💢'},
+  {id:'parcelamento',label:'Parcelamento',emoji:'💳'},
+  {id:'promocao',label:'Promoção',emoji:'🏷️'},
+  {id:'exclusividade',label:'Exclusividade',emoji:'⭐'},
+  {id:'reengajamento',label:'Reengajamento',emoji:'🔄'},
+  {id:'beneficios',label:'Benefícios',emoji:'🎁'},
+  {id:'audio',label:'Áudios',emoji:'🎙️'},
+  {id:'voucher',label:'Voucher 50%',emoji:'🎫'},
+  {id:'entrada',label:'Entrada R$150 + R$50',emoji:'💵'},
+];
+const BADGE_LABEL = {
+  urgencia:'🔥 Urgência',zona:'💢 Zona de Conforto',parcelamento:'💳 Parcelamento',
+  promocao:'🏷️ Promoção',exclusividade:'⭐ Exclusividade',reengajamento:'🔄 Reengajamento',
+  beneficios:'🎁 Benefícios',audio:'🎙️ Áudio',voucher:'🎫 Voucher 50%',entrada:'💵 Entrada R$150 + R$50'
+};
+let mensagens = [
+  {
+    "id": 1,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "⚡ OI [NOME]! Passa HOJE na FACILITA CELL! Celular top com entrada ZERO e ate 18x no boleto. So hoje essa condicao especial! Te esperamos! 📱"
+  },
+  {
+    "id": 2,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🔥 [NOME], ULTIMA CHANCE! Hoje e o ultimo dia com essa oferta INCRIVEL de celular parcelado em 18x no boleto na FACILITA CELL. Nao perde isso!"
+  },
+  {
+    "id": 3,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "⏰ [NOME], promocoes por TEMPO LIMITADO! Passa hoje na FACILITA CELL antes que acabe o estoque. Parcelamos em ate 18x no boleto!"
+  },
+  {
+    "id": 4,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🚨 ALERTA [NOME]! So restam poucas unidades! Corra ate a FACILITA CELL e garanta o seu celular parcelado em 18x no boleto. Hoje ainda da tempo!"
+  },
+  {
+    "id": 5,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "⚡ [NOME], voce falou que queria um celular novo! O momento e AGORA! Passa na FACILITA CELL hoje e sai de la com o seu. 18x no boleto, sem complicacao!"
+  },
+  {
+    "id": 6,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🔔 [NOME]! A oferta de celular top de linha com 18x no boleto na FACILITA CELL vence HOJE. Nao deixa pra amanha o que voce pode ter hoje!"
+  },
+  {
+    "id": 7,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "💥 [NOME], acabou de chegar novidade aqui na FACILITA CELL e a promocao e por HOJE somente! Celular novo parcelado no boleto em ate 18x. Vem logo!"
+  },
+  {
+    "id": 8,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🏃 [NOME]! Corra! Estoque LIMITADO de celulares com parcelamento especial em 18x no boleto na FACILITA CELL. Quem chegar primeiro garante!"
+  },
+  {
+    "id": 9,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "⏳ [NOME], faltam poucas horas para essa promocao acabar na FACILITA CELL! Celular top parcelado em 18x no boleto sem entrada. Chega logo!"
+  },
+  {
+    "id": 10,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🚀 [NOME]! Hoje e DIA DE OPORTUNIDADE aqui na FACILITA CELL! Celular novo saindo parcelado em 18x. Nao deixa essa chance passar!"
+  },
+  {
+    "id": 11,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "🔴 [NOME], corre! Oferta por encerrar na FACILITA CELL! Celular top com 18x no boleto. Se nao vier hoje pode perder essa condicao incrivel!"
+  },
+  {
+    "id": 12,
+    "cat": "urgencia",
+    "tipo": "texto",
+    "texto": "💥 [NOME]! HOJE tem feirao de celulares na FACILITA CELL! Condicoes que so aparecem uma vez. 18x no boleto, entrada zerada. Vem hoje!"
+  },
+  {
+    "id": 13,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😤 [NOME], com todo respeito: voce vai continuar usando esse celular travado por quanto tempo mais? Na FACILITA CELL voce resolve isso HOJE em 18x no boleto!"
+  },
+  {
+    "id": 14,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🤔 [NOME]! Voce sabe que precisa de um celular novo. Eu sei. Todo mundo sabe. O que ta faltando? So a decisao! FACILITA CELL, 18x no boleto, hoje!"
+  },
+  {
+    "id": 15,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😬 [NOME], enquanto voce pensa, o estoque da FACILITA CELL vai acabando. Quem age RAPIDO sai com o celular. Quem espera... fica pra proxima!"
+  },
+  {
+    "id": 16,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "💭 [NOME], todo mundo ao redor ja trocou de celular e voce ainda no mesmo. Nao e hora de se atualizar? FACILITA CELL tem 18x no boleto pra facilitar!"
+  },
+  {
+    "id": 17,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🔑 [NOME]! A unica coisa que separa voce do celular novo e a DECISAO de vir ate a FACILITA CELL. 18x no boleto. Simples. O que ta travando?"
+  },
+  {
+    "id": 18,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "📉 [NOME], cada dia que passa com esse celular antigo e um dia de oportunidade perdida. Bateria fraca, camera ruim, travando... Ate quando? FACILITA CELL 18x boleto!"
+  },
+  {
+    "id": 19,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😮 [NOME]! Imagina daqui a 6 meses com o mesmo celular velho porque nao aproveitou essa chance hoje na FACILITA CELL. Nao deixa isso acontecer! 18x boleto!"
+  },
+  {
+    "id": 20,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🎯 [NOME], voce veio na FACILITA CELL, gostou, mas nao levou. O que aconteceu? As vezes a gente trava em decisao pequena e perde coisa grande. Volta hoje! 18x boleto!"
+  },
+  {
+    "id": 21,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "⚡ [NOME]! Celular novo nao e LUXO, e NECESSIDADE! Voce usa o celular pra tudo: trabalho, familia, redes sociais. Por que se contentar com menos? FACILITA CELL 18x boleto!"
+  },
+  {
+    "id": 22,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "💡 [NOME], vou ser DIRETO: celular ruim prejudica sua produtividade, suas fotos, seus negocios. Invista em voce! FACILITA CELL parcela em 18x no boleto. Decisao inteligente!"
+  },
+  {
+    "id": 23,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😅 [NOME]! Sua camera ainda tira foto pixelada? Sua bateria dura 2 horas? Seu celular trava no WhatsApp? Isso TEM CURA! FACILITA CELL, 18x no boleto, agora!"
+  },
+  {
+    "id": 24,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🔥 [NOME], as pessoas de sucesso nao esperam o momento perfeito, CRIAM o momento! Venha a FACILITA CELL hoje e saia com seu celular novo em 18x no boleto!"
+  },
+  {
+    "id": 25,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "👊 [NOME]! Chega de desculpa! Nao precisa de dinheiro a vista, nao precisa de cartao de credito. Na FACILITA CELL e BOLETO em 18x. Que outro motivo falta?"
+  },
+  {
+    "id": 26,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😳 [NOME], serio mesmo: quanto voce gasta por mes em coisas que nem lembra? Um celular novo em 18x no boleto na FACILITA CELL pode caber nesse mesmo orcamento!"
+  },
+  {
+    "id": 27,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "💪 [NOME]! Voce merece melhor que esse celular ai. A gente sabe que sim. A FACILITA CELL sabe que sim. Quando VOCE vai reconhecer isso? 18x boleto!"
+  },
+  {
+    "id": 28,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🧠 [NOME], toda transformacao comeca com UMA decisao. Trocar de celular e pequena? Nem um pouco! E qualidade de vida, produtividade, presenca digital. FACILITA CELL 18x boleto!"
+  },
+  {
+    "id": 29,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "⏰ [NOME]! O tempo que voce perde reiniciando o celular toda hora, esperando carregar, aguardando o app abrir... voce poderia GANHAR de volta com um celular novo! FACILITA CELL 18x boleto!"
+  },
+  {
+    "id": 30,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🚀 [NOME], gente que vai pra frente nao fica presa em coisas antigas. Novo celular, nova fase! FACILITA CELL tem 18x no boleto esperando por voce. Vem evoluir!"
+  },
+  {
+    "id": 31,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "😤 [NOME]! Com quanto voce vai sair da FACILITA CELL hoje? Com zero reais. Sabe por que? Porque e BOLETO, parcela no mes que vem! Nao tem desculpa que segure essa oportunidade!"
+  },
+  {
+    "id": 32,
+    "cat": "zona",
+    "tipo": "texto",
+    "texto": "🎬 [NOME], imagina voce registrando os melhores momentos com uma camera incrivel, bateria que dura o dia, celular que nao trava. Isso existe na FACILITA CELL em 18x no boleto!"
+  },
+  {
+    "id": 33,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "💳 [NOME], imagina ter um celular top por uma parcela pequena por mes! Na FACILITA CELL voce parcela em ate 18x NO BOLETO, sem precisar de cartao. Vem conhecer!"
+  },
+  {
+    "id": 34,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "📱 [NOME]! Celular novo em 18x no BOLETO? So na FACILITA CELL! Sem cartao, sem burocracia. Passa aqui e sai com o seu hoje!"
+  },
+  {
+    "id": 35,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "💰 [NOME], na FACILITA CELL voce paga no boleto em ate 18x! SEM cartao de credito. Parcelamento facilitado pra voce sair com seu celular hoje!"
+  },
+  {
+    "id": 36,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "✅ [NOME]! Nao tem cartao de credito? NAO TEM PROBLEMA! Na FACILITA CELL parcelamos seu celular em ate 18x NO BOLETO! Vem conversar com a gente!"
+  },
+  {
+    "id": 37,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "📲 [NOME], celular novo por parcelas que cabem no bolso E no boleto! Aqui na FACILITA CELL dividimos em ate 18x sem entrada. Que dia voce pode passar?"
+  },
+  {
+    "id": 38,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "🤝 [NOME], a gente facilita tudo pra voce! Celular top, entrada zero, 18x no boleto. Na FACILITA CELL nao tem misterio. Vem agora!"
+  },
+  {
+    "id": 39,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "📊 [NOME], faz a conta: celular top dividido em 18x no boleto = parcela menor que uma pizza por semana! Passa na FACILITA CELL e comprova!"
+  },
+  {
+    "id": 40,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "🗓️ [NOME], voce escolhe o dia de vencimento do boleto! Na FACILITA CELL o parcelamento de celular e do SEU jeito, em 18x. Vem conversar!"
+  },
+  {
+    "id": 41,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "💡 [NOME], 18x no boleto e muito mais pratico! Paga no app do banco, loterica ou internet. Simples assim! So na FACILITA CELL pra voce!"
+  },
+  {
+    "id": 42,
+    "cat": "parcelamento",
+    "tipo": "texto",
+    "texto": "📦 [NOME]! Sai de casa SEM DINHEIRO e entra com celular novo! Na FACILITA CELL parcelamos em ate 18x no boleto. Aprovacao na hora!"
+  },
+  {
+    "id": 43,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🎉 [NOME]! PROMOCAO ESPECIAL na FACILITA CELL! Celulares top com os melhores precos E parcelado em 18x no boleto! Corre que e por tempo limitado!"
+  },
+  {
+    "id": 44,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🔥 [NOME], SEMANA MALUCA na FACILITA CELL! Celulares com precos que voce nunca viu, parcelados em 18x no boleto. Passa hoje!"
+  },
+  {
+    "id": 45,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🎁 [NOME]! Compre seu celular na FACILITA CELL essa semana e GANHE acessorios de brinde! E ainda parcelamos em 18x no boleto. Oferta imperdivel!"
+  },
+  {
+    "id": 46,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "💥 [NOME], liquidacao de celulares na FACILITA CELL! Modelos incriveis com preco de fabrica e 18x no boleto. Hoje tem! Vem ver!"
+  },
+  {
+    "id": 47,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🌟 [NOME], chegou a MEGA PROMOCAO na FACILITA CELL! Entrada zerada + 18x no boleto. Condicao especial so para quem chegar hoje!"
+  },
+  {
+    "id": 48,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🎊 [NOME]! Promocao ESPECIAL na FACILITA CELL = PRECOS IMBATIVEIS! Celulares top parcelados em 18x no boleto. Venha aproveitar!"
+  },
+  {
+    "id": 49,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "💰 [NOME], hoje tem OFERTA RELAMPAGO de celular na FACILITA CELL! Preco especial por tempo limitado + 18x no boleto. Corre que acaba!"
+  },
+  {
+    "id": 50,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🏷️ [NOME], etiquetas TROCADAS aqui na FACILITA CELL! Os precos dos celulares nunca estiveram tao baixos. 18x no boleto sem burocracia. Vem ver!"
+  },
+  {
+    "id": 51,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "☀️ [NOME], bom dia com OTIMA NOTICIA! FACILITA CELL esta com promocao imperdivel de celular em 18x no boleto. Comeca bem o dia e ja passa aqui!"
+  },
+  {
+    "id": 52,
+    "cat": "promocao",
+    "tipo": "texto",
+    "texto": "🎯 [NOME]! FACILITA CELL com novos modelos chegando e os anteriores com DESCONTO ABSURDO! 18x no boleto. Aproveita que e pra ja!"
+  },
+  {
+    "id": 53,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "👑 [NOME], voce e especial pra gente! Por isso temos uma oferta EXCLUSIVA de celular pra voce! 18x no boleto com condicao VIP. Vem aproveitar na FACILITA CELL!"
+  },
+  {
+    "id": 54,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "⭐ [NOME]! Como cliente da FACILITA CELL, voce tem acesso a condicoes que mais ninguem tem! Celular top em 18x no boleto com desconto especial. Vem hoje!"
+  },
+  {
+    "id": 55,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "💎 [NOME]! Oferta reservada especialmente pra voce! Celular com condicoes que nenhuma outra loja tem. 18x no boleto na FACILITA CELL. Nao deixa passar!"
+  },
+  {
+    "id": 56,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "🎖️ [NOME]! Pre-selecionamos voce para nossa oferta PREMIUM de celular! 18x no boleto com aprovacao garantida. Passa na FACILITA CELL e vem buscar o seu!"
+  },
+  {
+    "id": 57,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "✨ [NOME], seu nome saiu na nossa lista VIP! Oferta limitada de celular com 18x no boleto na FACILITA CELL. Vem antes que outra pessoa pegue sua vaga!"
+  },
+  {
+    "id": 58,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "🎀 [NOME]! Presente pra voce da FACILITA CELL: OFERTA SECRETA de celular em 18x no boleto. So pra quem mostrar essa mensagem. Venha!"
+  },
+  {
+    "id": 59,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "💌 [NOME]! Mensagem pessoal da FACILITA CELL: preparamos uma oferta UNICA de celular em 18x no boleto pra voce. Nao decepciona!"
+  },
+  {
+    "id": 60,
+    "cat": "exclusividade",
+    "tipo": "texto",
+    "texto": "🔑 [NOME]! Voce desbloqueou uma oferta SECRETA na FACILITA CELL! Celular top em 18x no boleto com condicoes que nem divulgamos publicamente. Vem descobrir!"
+  },
+  {
+    "id": 61,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "🤔 [NOME], voce sumiu! Saudades de voce aqui na FACILITA CELL! Voltamos com uma oferta ESPECIAL de celular: 18x no boleto sem entrada. Vem nos visitar!"
+  },
+  {
+    "id": 62,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "👋 [NOME]! Faz tempo que voce nao aparece! Olha o que a FACILITA CELL preparou pra te fazer voltar: celular top com 18x no boleto. Vem logo!"
+  },
+  {
+    "id": 63,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "💭 [NOME], lembrou de nos? FACILITA CELL lembrou de voce! Preparamos uma oferta especial de celular em 18x no boleto. Saudades!"
+  },
+  {
+    "id": 64,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "📞 [NOME]! Tentei te ligar mas nao consegui. Tenho uma oferta IMPERDIVEL de celular em 18x no boleto esperando por voce na FACILITA CELL!"
+  },
+  {
+    "id": 65,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "🌟 [NOME], sei que voce esta esperando a hora certa de trocar de celular. Essa hora e AGORA! 18x no boleto na FACILITA CELL. Bora?"
+  },
+  {
+    "id": 66,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "💬 [NOME]! Voce perguntou sobre celulares faz um tempo. Temos NOVIDADES e condicoes ainda melhores na FACILITA CELL! 18x no boleto. Que tal passar hoje?"
+  },
+  {
+    "id": 67,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "🔄 [NOME], sentimos sua falta! Voltamos com promocao ARRASADORA de celular em 18x no boleto. So falta voce aparecer na FACILITA CELL!"
+  },
+  {
+    "id": 68,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "📱 [NOME]! Aquele celular que voce queria... ainda esta aqui! E ainda da pra parcelar em 18x no boleto na FACILITA CELL. Nao deixa mais pra depois!"
+  },
+  {
+    "id": 69,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "💪 [NOME]! Sei que voce merece um celular melhor. A FACILITA CELL tem as melhores condicoes pra isso acontecer hoje! 18x no boleto. Vem?"
+  },
+  {
+    "id": 70,
+    "cat": "reengajamento",
+    "tipo": "texto",
+    "texto": "🎯 [NOME], voce veio, gostou mas nao levou. Isso muda hoje! Condicoes especiais de celular em 18x no boleto na FACILITA CELL. Vem dar uma segunda chance?"
+  },
+  {
+    "id": 71,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🛡️ [NOME]! Na FACILITA CELL seu celular vem com GARANTIA de fabrica + assistencia tecnica especializada! E ainda parcelamos em 18x no boleto. Venha!"
+  },
+  {
+    "id": 72,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "📦 [NOME], na FACILITA CELL voce leva o celular ja com ACESSORIOS inclusos e ainda parcela em 18x no boleto! Negocio completo pra voce!"
+  },
+  {
+    "id": 73,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🔧 [NOME]! Aqui na FACILITA CELL voce tem suporte tecnico GRATUITO apos a compra! E celular novo em 18x no boleto. Melhor negocio da cidade!"
+  },
+  {
+    "id": 74,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "📶 [NOME], sabia que na FACILITA CELL a gente configura todo o celular pra voce NA HORA? E ainda parcela em 18x no boleto! Atendimento completo!"
+  },
+  {
+    "id": 75,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🎁 [NOME]! Compre celular na FACILITA CELL e ganhe capa + pelicula instalada na hora! E ainda em 18x no boleto. Que oferta completa!"
+  },
+  {
+    "id": 76,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🌐 [NOME]! Transferimos todos os seus DADOS do celular antigo pro novo GRATUITAMENTE na FACILITA CELL! E ainda parcela em 18x no boleto!"
+  },
+  {
+    "id": 77,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🏆 [NOME]! FACILITA CELL e TOP no atendimento! Nossos clientes indicam pra familia toda. Celular em 18x no boleto com quem tem reputacao. Vem!"
+  },
+  {
+    "id": 78,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "⭐ [NOME], avaliacao 5 estrelas na FACILITA CELL! Nossos clientes falam bem porque a gente entrega mesmo. Celular em 18x no boleto. Passa ver!"
+  },
+  {
+    "id": 79,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "📱 [NOME]! Celular ORIGINAL, com NOTA FISCAL, parcelado em 18x no boleto! So compra com seguranca na FACILITA CELL. Vem!"
+  },
+  {
+    "id": 80,
+    "cat": "beneficios",
+    "tipo": "texto",
+    "texto": "🤗 [NOME]! Aqui na FACILITA CELL voce e tratado como FAMILIA! Atendimento com carinho + celular em 18x no boleto. Venha sentir a diferenca!"
+  },
+  {
+    "id": 81,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 1 - Urgencia Imediata",
+    "texto": "🎙️ ROTEIRO:\n\nOi, [NOME]! Aqui e [SEU NOME] da FACILITA CELL! Olha, eu to te ligando porque tenho uma oportunidade INCRIVEL pra te contar! A gente ta com uma promocao ESPECIAL de celulares hoje, com parcelamento em ate 18 vezes NO BOLETO, sem precisar de cartao de credito! Sao modelos top de linha com o melhor preco que voce vai encontrar aqui na cidade. Mas olha, essa condicao e por TEMPO LIMITADO e o estoque ta acabando! Entao se voce quiser garantir o seu, precisa passar aqui na FACILITA CELL hoje ainda! To te esperando com toda a atencao! Um abraco!"
+  },
+  {
+    "id": 82,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 2 - Zona de Conforto Direto",
+    "texto": "🎙️ ROTEIRO:\n\n[NOME], boa tarde! Vou ser direto com voce porque eu respeito seu tempo. Voce ta esperando o que pra ter um celular novo? Na FACILITA CELL voce parcela em 18 vezes NO BOLETO, sem cartao, sem burocracia. Sem entrada! Voce sai de la com o celular na mao e so comeca a pagar no mes que vem! Nao tem mais desculpa! Venha hoje mesmo, to aqui pra te atender pessoalmente e mostrar as melhores opcoes. Um abraco!"
+  },
+  {
+    "id": 83,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 3 - Cliente Especial",
+    "texto": "🎙️ ROTEIRO:\n\n[NOME]! To te mandando esse audio porque voce e um cliente muito especial pra gente aqui na FACILITA CELL! E por isso, separei uma proposta EXCLUSIVA de celular pra voce! Imagine: celular de qualidade, original, com nota fiscal e garantia de fabrica, parcelado em 18 vezes NO BOLETO! Sem cartao, sem complicacao! Mas essa oferta e PERSONALIZADA, to guardando ela pra voce! Preciso so que voce passe aqui hoje! To aguardando com um cafezinho! Abraco!"
+  },
+  {
+    "id": 84,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 4 - Parcelamento Facilitado",
+    "texto": "🎙️ ROTEIRO:\n\nOi, [NOME]! Voce sabia que na FACILITA CELL voce consegue sair com o celular que voce sempre quis pagando PELO BOLETO em ate 18 vezes? Isso mesmo! Sem cartao de credito, sem analise demorada! Voce escolhe o celular, a gente parcela em 18 vezes e voce paga no boleto todo mes no app do banco ou loterica! Simples assim! Passa hoje aqui na FACILITA CELL, temos os melhores modelos e o atendimento mais bacana da cidade!"
+  },
+  {
+    "id": 85,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 5 - Promocao Relampago",
+    "texto": "🎙️ ROTEIRO:\n\nOI, [NOME]! Tudo bom? Olha, precisei te mandar esse audio URGENTE porque hoje aqui na FACILITA CELL ta acontecendo uma promocao que nao acontece todo dia! Temos celulares com precos ABSURDAMENTE baixos, parcelados em 18 VEZES NO BOLETO! Sem entrada, sem cartao! Sao poucas unidades e to avisando nossos clientes especiais primeiro! Nao deixa pra depois porque pode acabar! Vem hoje! Um grande abraco!"
+  },
+  {
+    "id": 86,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 6 - Tira da Zona de Conforto",
+    "texto": "🎙️ ROTEIRO:\n\n[NOME], deixa eu te fazer uma pergunta honesta: por quanto tempo voce ainda vai usar esse celular que trava, que a bateria nao dura, que a camera e horrivel? Eu pergunto isso porque aqui na FACILITA CELL voce resolve tudo isso HOJE, pagando 18 vezes no boleto, sem cartao de credito! E uma decisao pequena que vai mudar sua qualidade de vida no dia a dia! Voce merece melhor! Passa aqui hoje, to te esperando!"
+  },
+  {
+    "id": 87,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 7 - Beneficios Completos",
+    "texto": "🎙️ ROTEIRO:\n\nOi, [NOME]! Na FACILITA CELL voce nao compra so o celular. Voce recebe o aparelho com nota fiscal, garantia de fabrica, capa protetora instalada, pelicula na tela e ainda transferimos todos os seus dados do celular antigo pro novo SEM COBRAR NADA a mais! E tudo isso parcelado em 18 VEZES NO BOLETO! Atendimento completo, produto original e parcela que cabe no seu bolso! Vem hoje que eu te atendo pessoalmente!"
+  },
+  {
+    "id": 88,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 8 - Reengajamento Emotivo",
+    "texto": "🎙️ ROTEIRO:\n\n[NOME]! Faz tempo que voce nao aparece e a gente sente sua falta! Mas preciso te contar: chegaram novidades incriveis aqui na FACILITA CELL e as condicoes de parcelamento estao ainda melhores! 18 vezes no boleto, sem cartao e com aprovacao na hora! Sei que voce tava pensando em trocar de celular... entao ESSE E O MOMENTO! Nao fica esperando. Vem hoje me visitar, to aqui com cafe quentinho e a melhor oferta da cidade!"
+  },
+  {
+    "id": 89,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 9 - Urgencia de Estoque",
+    "texto": "🎙️ ROTEIRO:\n\n[NOME], rapido! Acabei de ver que temos so mais POUCAS UNIDADES do celular que voce estava interessado! E ainda da pra parcelar em 18 vezes no boleto! Com esse ritmo de vendas, nao vai durar ate amanha! To reservando um pro seu nome POR HOJE! Se voce confirmar que vem, eu separo e ninguem mais toca! Passa aqui hoje na FACILITA CELL e garanta o seu antes que outra pessoa compre!"
+  },
+  {
+    "id": 90,
+    "cat": "audio",
+    "tipo": "audio",
+    "titulo": "Audio 10 - Fim de Semana",
+    "texto": "🎙️ ROTEIRO:\n\nOi, [NOME]! Feliz fim de semana! Aqui e da FACILITA CELL e hoje e dia de SUPER PROMOCAO! Toda a familia pode vir, porque temos celulares pra todos os perfis, parcelados em 18 VEZES NO BOLETO! Sem cartao, sem entrada! Voce sai com o celular na mao e comeca a pagar so no mes que vem! Vem passar o fim de semana fazendo um bom negocio aqui na FACILITA CELL!"
+  }
+];
+
+// Mensagens de Voucher 50% na primeira parcela
+let mensagensVoucher = [
+  {id:91,cat:'voucher',tipo:'texto',texto:'🎫 [NOME]! Tenho uma novidade EXCLUSIVA pra voce! Passe na FACILITA CELL e apresente o VOUCHER que vou te enviar para ganhar 50% DE DESCONTO na primeira parcela do seu celular novo! 18x no boleto, sem cartao. Mas ATENÇÃO: sem o voucher o desconto nao e valido! Aproveita!'},
+  {id:92,cat:'voucher',tipo:'texto',texto:'🏷️ [NOME], preparei um VOUCHER ESPECIAL so pra voce! Com ele voce ganha 50% na PRIMEIRA PARCELA ao comprar seu celular na FACILITA CELL parcelado em 18x no boleto! E simples: vem, apresenta o voucher e ja sai pagando METADE na primeira! Sem o voucher nao tem desconto, combinado?'},
+  {id:93,cat:'voucher',tipo:'texto',texto:'⭐ [NOME]! Voce foi selecionado para receber um VOUCHER VIP da FACILITA CELL! Desconto de 50% na primeira parcela do seu celular novo! So precisa vir ate a loja e apresentar o voucher. Sem ele nao conseguimos aplicar o desconto. Avisa quando quiser receber o voucher!'},
+  {id:94,cat:'voucher',tipo:'texto',texto:'💥 [NOME], vou te mandar um VOUCHER agora que vai te surpreender! 50% de desconto na PRIMEIRA PARCELA do celular na FACILITA CELL! 18 parcelas no boleto, sem cartao e ainda com esse desconto ESPECIAL na entrada. Mas so vale pra quem apresentar o voucher na loja. Quer receber?'},
+  {id:95,cat:'voucher',tipo:'texto',texto:'🎁 [NOME]! Presente da FACILITA CELL pra voce: VOUCHER com 50% NA PRIMEIRA PARCELA! Isso significa que voce ja sai pagando METADE da primeira prestacao na hora. 17 parcelas normais no boleto depois. Produto original, garantia de fabrica. Sem apresentar o voucher nao tem esse beneficio especial!'},
+  {id:96,cat:'voucher',tipo:'texto',texto:'🔥 [NOME]! Temos um VOUCHER EXCLUSIVO esperando por voce! Apresenta na FACILITA CELL e paga so METADE na primeira parcela do seu celular novo em 18x no boleto! E uma oferta REAL, nao tem letra miuda. So valida com o voucher em maos. Quer que eu te envie agora?'},
+  {id:97,cat:'voucher',tipo:'texto',texto:'⚡ [NOME], celular novo ficou MUITO mais facil! Com o VOUCHER da FACILITA CELL voce paga 50% na primeira parcela e o resto em 17x no boleto! Sem cartao, sem burocracia e com um desconto real no bolso. IMPORTANTE: so e valido apresentando o voucher na loja. Avisa!'},
+  {id:98,cat:'voucher',tipo:'texto',texto:'💰 [NOME]! Imagina sair com um celular top, parcelado em 18x no boleto E ainda pagar so METADE na primeira parcela! Na FACILITA CELL isso e possivel com o nosso VOUCHER ESPECIAL. Nao esquece: o voucher e obrigatorio pra ter esse beneficio. Posso te enviar agora?'},
+  {id:99,cat:'voucher',tipo:'texto',texto:'🎯 [NOME], fiz questao de separar um VOUCHER pra voce antes de divulgar pra todo mundo! 50% na primeira parcela do celular na FACILITA CELL, 18x no boleto. Oferta limitada, so vale enquanto tiver voucher disponivel. E OBRIGATORIO apresentar o voucher na loja pra ter o desconto. Corre!'},
+  {id:100,cat:'voucher',tipo:'texto',texto:'📲 [NOME]! Novidade na FACILITA CELL: VOUCHER de 50% na primeira parcela! Cliente que vier com o voucher ja sai pagando METADE na hora. Celular original, parcelado em 18x no boleto, sem cartao. Mas fica esperto: SEM O VOUCHER o desconto nao e aplicado. Quer garantir o seu?'},
+];
+mensagens = mensagens.concat(mensagensVoucher);
+
+// Mensagens: Entrada R$150 + Voucher R$50 na primeira parcela
+const mensagensEntrada = [
+  {id:101,cat:'entrada',tipo:'texto',texto:'💥 [NOME]! OFERTA IMPERDIVEL na FACILITA CELL por TEMPO LIMITADO! Venha com R$150 de entrada e GANHE um voucher de R$50 de desconto na sua primeira parcela! E celular top, 18x no boleto, e ainda volta com dinheiro no bolso. So pra quem vier hoje!'},
+  {id:102,cat:'entrada',tipo:'texto',texto:'🎁 [NOME], temos uma condicao ESPECIAL aqui na FACILITA CELL que so quem vier pessoalmente aproveita! Entrada de R$150 + VOUCHER DE R$50 na primeira parcela. Isso significa que voce ja da um passo GIGANTE com bem menos! Corre, e por tempo limitado!'},
+  {id:103,cat:'entrada',tipo:'texto',texto:'🔥 [NOME]! Imagina entrar na FACILITA CELL com R$150, sair com um celular top parcelado em 18x no boleto E AINDA ganhar um voucher de R$50 pra usar na primeira parcela? Isso ta acontecendo AGORA, mas so por tempo limitado. Vem logo!'},
+  {id:104,cat:'entrada',tipo:'texto',texto:'⚡ [NOME]! FACILITA CELL com promocao RELAMPAGO: entrada de R$150 e voce recebe um VOUCHER de R$50 de desconto na 1a parcela! Na pratica voce ja inicia pagando so R$50 no primeiro mes. Celular novo, boleto facil, desconto real. So pra quem aparecer!'},
+  {id:105,cat:'entrada',tipo:'texto',texto:'🎯 [NOME], quer a melhor condicao do mes? Passa na FACILITA CELL com R$150 de entrada e sai com seu celular novo + VOUCHER de R$50 na primeira parcela! E 18x no boleto com um comeco que cabe no bolso. ATENCAO: promocao por tempo limitado!'},
+  {id:106,cat:'entrada',tipo:'texto',texto:'💰 [NOME]! OPORTUNIDADE UNICA na FACILITA CELL: com apenas R$150 de entrada voce ja garante o celular E recebe um voucher de R$50 pra usar na primeira parcela do boleto! Quanto melhor que isso? So passando aqui pra aproveitar. Nao deixa pra amanha!'},
+  {id:107,cat:'entrada',tipo:'texto',texto:'🏃 [NOME], corre! Promocao LIMITADA na FACILITA CELL! Traga R$150 de entrada, leve seu celular novo parcelado em 18x no boleto e ainda ganhe um VOUCHER de R$50 de desconto na primeira parcela. Faz a conta: vale MUITO a pena. Vem hoje!'},
+  {id:108,cat:'entrada',tipo:'texto',texto:'📱 [NOME]! Celular novo com entrada de R$150 + VOUCHER R$50 na 1a parcela = o melhor negocio da cidade! Na FACILITA CELL a gente facilita de VERDADE. 18x no boleto, sem cartao, e ainda com desconto pra voce comecar bem. So por tempo limitado!'},
+  {id:109,cat:'entrada',tipo:'texto',texto:'⭐ [NOME], separei essa informacao pra voce porque acho que vai gostar: na FACILITA CELL ta valendo ENTRADA DE R$150 + GANHE UM VOUCHER DE R$50 NA PRIMEIRA PARCELA! E celular original, garantia de fabrica, 18x no boleto. Condicao que nao se repete todo dia!'},
+  {id:110,cat:'entrada',tipo:'texto',texto:'🚀 [NOME]! Acabou a desculpa de nao ter dinheiro pra dar entrada! Na FACILITA CELL voce começa com R$150, ganha R$50 de volta em voucher na primeira parcela, e parcela o restante em 18x no boleto. Parece bom demais? PARECE, mas e REAL! So por tempo limitado!'},
+];
+mensagens = mensagens.concat(mensagensEntrada);
+
+// ---- Mensagens de Urgência com Voucher (código incluído na mensagem) ----
+// Estas mensagens são para enviar DEPOIS de gerar o voucher, com o código real do cliente
+const mensagensUrgenciaVoucher = [
+  {id:111,cat:'voucher',tipo:'texto',texto:'🚨 [NOME], SEU VOUCHER VAI EXPIRAR!\n\n🔑 Código: *[CODIGO_VOUCHER]*\n⏱ Válido apenas por *[HORAS]h*!\n\n50% DE DESCONTO na primeira parcela do seu celular novo na FACILITA CELL!\n\n❌ Se não vier HOJE o voucher vence e você PERDE o desconto!\nParcelamos em 18x no boleto. Venha AGORA!'},
+  {id:112,cat:'voucher',tipo:'texto',texto:'⚡ [NOME]! ÚLTIMAS HORAS DO SEU VOUCHER!\n\n🎫 Código: *[CODIGO_VOUCHER]*\n🕐 Expira em *[HORAS]h* — NÃO DEIXA VENCER!\n\nSó chegar na FACILITA CELL, mostrar esse código e garantir 50% na 1ª parcela!\n\n👉 Sem esse código o desconto NÃO é aplicado. Corra!'},
+  {id:113,cat:'voucher',tipo:'texto',texto:'🔴 [NOME], ALERTA FINAL!\n\nSeu voucher *[CODIGO_VOUCHER]* expira em *[HORAS]h*!\n\nDepois disso você vai pagar o PREÇO NORMAL, sem o desconto de 50% na primeira parcela.\n\nA FACILITA CELL tá te esperando! 18x no boleto, sem cartão. NÃO PERDE ESSA!'},
+  {id:114,cat:'voucher',tipo:'texto',texto:'😤 [NOME]! Vou ser direto:\n\nVocê tem um voucher *[CODIGO_VOUCHER]* com 50% de desconto na 1ª parcela que vence em *[HORAS]h*.\n\nSe não vier hoje, esse dinheiro vai pelo ralo.\n\nFACILITA CELL tá aberta. 18x no boleto. O que falta pra você vir?'},
+  {id:115,cat:'voucher',tipo:'texto',texto:'💥 [NOME]! CONTA REGRESSIVA!\n\n⏰ *[HORAS]h* restantes do seu voucher *[CODIGO_VOUCHER]*!\n\nEsse voucher = 50% na 1ª parcela do celular novo.\nDepois que vencer... sumiu o desconto.\n\n🏃 CORRE pra FACILITA CELL! 18x no boleto, sem cartão de crédito!'},
+  {id:116,cat:'voucher',tipo:'texto',texto:'🎫 [NOME], hoje é O DIA!\n\nSeu voucher *[CODIGO_VOUCHER]* dá 50% de desconto na primeira parcela e vence em *[HORAS]h*.\n\n✅ Chega, fala seu nome + esse código na FACILITA CELL\n✅ Parcela em 18x no boleto\n✅ Sai com celular novo na mão\n\nMais fácil que isso, impossível! Vem!'},
+  {id:117,cat:'voucher',tipo:'texto',texto:'⚠️ [NOME]! NÃO DEIXA VENCER!\n\nVoucher *[CODIGO_VOUCHER]* — 50% na 1ª parcela\n⏱ Vence em *[HORAS]h*\n\nImagina perder esse desconto por falta de tempo? Não deixa isso acontecer!\n\nFACILITA CELL parcela seu celular em 18x no boleto e você ainda usa o voucher hoje mesmo. VEM!'},
+  {id:118,cat:'voucher',tipo:'texto',texto:'🔥 [NOME]! SEU VOUCHER EXPIRA EM *[HORAS]H*!\n\nCódigo: *[CODIGO_VOUCHER]*\n\nEsse desconto de 50% na primeira parcela do celular novo foi preparado ESPECIALMENTE PRA VOCÊ.\n\nNão dá pra renovar depois que vencer. Passa na FACILITA CELL AGORA e usa antes que expire! 18x no boleto!'},
+];
+mensagens = mensagens.concat(mensagensUrgenciaVoucher);
+
+let nextId=119;
+let catAtiva='todas';
+let copiados={};
+let editando={};
+let totalCopiados=0;
+
+function renderCats(){
+  const el=document.getElementById('cats');
+  el.innerHTML='';
+  CATS.forEach(c=>{
+    const cnt=c.id==='todas'?mensagens.length:mensagens.filter(m=>m.cat===c.id).length;
+    const btn=document.createElement('button');
+    btn.className='cat-btn cat-'+c.id+(catAtiva===c.id?' ativo':'');
+    btn.innerHTML=c.emoji+' '+c.label+'<span class="cnt">'+cnt+'</span>';
+    btn.onclick=()=>{catAtiva=c.id;renderAll()};
+    el.appendChild(btn);
+  });
+}
+function getMsgs(){
+  const b=document.getElementById('busca').value.trim().toLowerCase();
+  return mensagens.filter(m=>{
+    const catOk=catAtiva==='todas'||m.cat===catAtiva;
+    const bOk=!b||(m.texto||'').toLowerCase().includes(b)||(m.titulo||'').toLowerCase().includes(b);
+    return catOk&&bOk;
+  });
+}
+function escHtml(t){
+  return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+function renderGrid(){
+  const g=document.getElementById('grid');
+  const list=getMsgs();
+  document.getElementById('res-count').textContent=list.length;
+  const b=document.getElementById('busca').value.trim();
+  document.getElementById('btn-limpar').style.display=b?'block':'none';
+  g.innerHTML='';
+  if(!list.length){
+    g.innerHTML='<div class="vazio"><p style="font-size:32px">🔍</p><p>Nenhuma mensagem encontrada</p></div>';
+    return;
+  }
+  list.forEach(m=>g.appendChild(criarCard(m)));
+}
+function criarCard(m){
+  const div=document.createElement('div');
+  div.className='msg-card';
+  div.id='card-'+m.id;
+  const isAudio=m.tipo==='audio';
+  const editMode=editando[m.id];
+  const copiado=copiados[m.id];
+  div.innerHTML=
+    '<div class="card-line line-'+m.cat+'"></div>'+
+    '<div class="card-top">'+
+      '<span class="badge badge-'+m.cat+'">'+(BADGE_LABEL[m.cat]||m.cat)+'</span>'+
+      '<span class="num">#'+m.id+'</span>'+
+    '</div>'+
+    '<div class="card-body">'+
+      (isAudio&&m.titulo?'<div class="msg-titulo">'+escHtml(m.titulo)+'</div>':'')+
+      (editMode
+        ?'<textarea class="msg-edit" id="edit-'+m.id+'">'+escHtml(m.texto)+'</textarea>'
+        :'<div class="'+(isAudio?'msg-audio':'msg-texto')+'">'+escHtml(m.texto)+'</div>'
+      )+
+    '</div>'+
+    '<div class="card-actions">'+
+      (!editMode
+        ?(
+          (m.cat==='voucher' && (m.texto||'').includes('[CODIGO_VOUCHER]')
+            ? '<button class="btn-act" style="background:#1a1400;border-color:#4d3c00;color:#ffd200" onclick="abrirVoucherPick('+m.id+')">🎫 Preencher Voucher</button>'
+            : '<button class="btn-act btn-copiar'+(copiado?' ok':'')+'" onclick="copiar('+m.id+')">'+(copiado?'✓ Copiado!':'⎘ Copiar')+'</button>'
+          )+
+          (m.cat==='voucher' && (m.texto||'').includes('[CODIGO_VOUCHER]')
+            ? '<button class="btn-act btn-copiar'+(copiado?' ok':'')+'" onclick="copiar('+m.id+')" style="'+(copiado?'':'')+'">⎘ Copiar bruto</button>'
+            : ''
+          )+
+          '<button class="btn-act btn-editar" onclick="iniciarEdit('+m.id+')">✏️ Editar</button>'
+        )
+        :'<button class="btn-act btn-salvar" onclick="salvarEdit('+m.id+')">💾 Salvar</button>'+
+          '<button class="btn-act btn-cancelar" onclick="cancelarEdit('+m.id+')">✕ Cancelar</button>'
+      )+
+      '<button class="btn-act btn-excluir" onclick="excluir('+m.id+')">🗑️</button>'+
+    '</div>';
+  return div;
+}
+// ---- INFO DA LOJA ----
+const LOJA_RODAPE = '\n\n---\nFACILITA CELL\nAv. Morenitas, 78 - Jardim das Flores, Porto Meira\nEm frente ao Panorama\nHorario: 9h as 17h50 (sem fechar pro almoco)';
+
+function copiar(id){
+  const m=mensagens.find(x=>x.id===id);
+  if(!m)return;
+  const texto = m.texto + LOJA_RODAPE;
+  navigator.clipboard.writeText(texto).catch(()=>{});
+  copiados[id]=true;
+  totalCopiados++;
+  document.getElementById('tot-copiados').textContent=totalCopiados;
+  atualizarCard(id);
+  setTimeout(()=>{delete copiados[id];atualizarCard(id)},2000);
+}
+function iniciarEdit(id){editando[id]=true;atualizarCard(id);}
+function cancelarEdit(id){delete editando[id];atualizarCard(id);}
+function salvarEdit(id){
+  const ta=document.getElementById('edit-'+id);
+  if(!ta)return;
+  const m=mensagens.find(x=>x.id===id);
+  if(m)m.texto=ta.value;
+  delete editando[id];
+  atualizarCard(id);
+  renderCats();
+}
+function excluir(id){
+  if(!confirm('Excluir esta mensagem?'))return;
+  mensagens=mensagens.filter(m=>m.id!==id);
+  const card=document.getElementById('card-'+id);
+  if(card)card.remove();
+  document.getElementById('res-count').textContent=getMsgs().length;
+  document.getElementById('tot-msgs').textContent=mensagens.length;
+  renderCats();
+}
+function atualizarCard(id){
+  const m=mensagens.find(x=>x.id===id);
+  const old=document.getElementById('card-'+id);
+  if(!m||!old)return;
+  old.replaceWith(criarCard(m));
+}
+function abrirModal(){document.getElementById('overlay').classList.add('show');}
+function fecharModal(){document.getElementById('overlay').classList.remove('show');}
+function salvarNova(){
+  const cat=document.getElementById('nova-cat').value;
+  const texto=document.getElementById('nova-texto').value.trim();
+  if(!texto){alert('Digite o texto da mensagem!');return;}
+  mensagens.push({id:nextId,cat:cat,tipo:cat==='audio'?'audio':'texto',texto:texto});
+  nextId++;
+  fecharModal();
+  document.getElementById('nova-texto').value='';
+  renderAll();
+}
+function limparBusca(){document.getElementById('busca').value='';renderAll();}
+function renderAll(){
+  document.getElementById('tot-msgs').textContent=mensagens.length;
+  renderCats();
+  renderGrid();
+}
+
+// ---- TABS ----
+function mudarTab(tab){
+  document.getElementById('view-msgs').style.display=tab==='msgs'?'block':'none';
+  document.getElementById('view-vouchers').style.display=tab==='vouchers'?'block':'none';
+  document.getElementById('tab-msgs').classList.toggle('ativo',tab==='msgs');
+  document.getElementById('tab-vouchers').classList.toggle('ativo',tab==='vouchers');
+  if(tab==='vouchers')renderTabelaVouchers();
+}
+
+// ---- VOUCHER CONTROL ----
+// voucherDB is kept in sync via the Firestore onSnapshot listener defined in the module script above
+if(!window.voucherDB) window.voucherDB = [];
+let vcFiltro = 'todos';
+let voucherAtual = null; // for the display modal
+
+// salvarVouchersDB is now a no-op — individual operations call Firestore directly
+function salvarVouchersDB(){ /* managed by Firestore */ }
+
+function gerarCodigo(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c='FC-';
+  for(let i=0;i<6;i++)c+=chars[Math.floor(Math.random()*chars.length)];
+  return c;
+}
+
+function mascaraCpf(el){
+  let v=el.value.replace(/\D/g,'');
+  if(v.length>3)v=v.substring(0,3)+'.'+v.substring(3);
+  if(v.length>7)v=v.substring(0,7)+'.'+v.substring(7);
+  if(v.length>11)v=v.substring(0,11)+'-'+v.substring(11);
+  el.value=v.substring(0,14);
+}
+
+function fmtData(d){
+  const dt=new Date(d);
+  return dt.getDate().toString().padStart(2,'0')+'/'+(dt.getMonth()+1).toString().padStart(2,'0')+'/'+dt.getFullYear();
+}
+
+function fmtDataHora(d){
+  const dt=new Date(d);
+  return dt.getDate().toString().padStart(2,'0')+'/'+(dt.getMonth()+1).toString().padStart(2,'0')+'/'+dt.getFullYear()+' às '+dt.getHours().toString().padStart(2,'0')+':'+dt.getMinutes().toString().padStart(2,'0')+'h';
+}
+
+function tempoRestante(d){
+  const diff=new Date(d)-new Date();
+  if(diff<=0)return'Expirado';
+  const h=Math.floor(diff/3600000);
+  const m=Math.floor((diff%3600000)/60000);
+  if(h>=24){const dias=Math.floor(h/24);return`${dias}d ${h%24}h restantes`;}
+  return`${h}h ${m}min restantes`;
+}
+
+function statusVoucher(v){
+  if(v.usado)return'usado';
+  if(new Date()>new Date(v.validade))return'expirado';
+  return'ativo';
+}
+
+function gerarVouchersLote(){
+  const nome=document.getElementById('vc-nome').value.trim();
+  const cpf=document.getElementById('vc-cpf').value.trim();
+  const horas=parseInt(document.getElementById('vc-validade').value)||24;
+  const qtd=Math.min(Math.max(parseInt(document.getElementById('vc-qtd').value)||1,1),50);
+  if(!nome){alert('Informe o nome do cliente!');document.getElementById('vc-nome').focus();return;}
+  if(!cpf||cpf.length<14){alert('Informe o CPF completo do cliente!');document.getElementById('vc-cpf').focus();return;}
+  const agora=new Date();
+  const validade=new Date(agora.getTime()+horas*60*60*1000);
+  let novos=[];
+  const { doc, setDoc, vouchersCol } = window._fb;
+  const writes = [];
+  for(let i=0;i<qtd;i++){
+    const id = String(Date.now()+i);
+    const v={
+      id: id,
+      codigo:gerarCodigo(),
+      nome:nome,
+      cpf:cpf,
+      criado:agora.toISOString(),
+      validade:validade.toISOString(),
+      usado:false,
+      usadoEm:null,
+      horasValidade:horas
+    };
+    novos.push(v);
+    writes.push(setDoc(doc(vouchersCol, id), v));
+  }
+  Promise.all(writes).then(()=>{
+    document.getElementById('vc-nome').value='';
+    document.getElementById('vc-cpf').value='';
+    document.getElementById('vc-qtd').value='1';
+    if(novos.length===1) abrirVoucherModal(novos[0]);
+    else alert(`✅ ${qtd} voucher(s) gerados com sucesso para ${nome}!\nValidade: ${horas}h`);
+  }).catch(err=>{alert('Erro ao salvar voucher: '+err.message);});
+}
+
+function setFiltroVoucher(btn,f){
+  vcFiltro=f;
+  document.querySelectorAll('.vc-filtro').forEach(b=>b.classList.remove('ativo'));
+  btn.classList.add('ativo');
+  renderTabelaVouchers();
+}
+
+function getVouchersFiltrados(){
+  const busca=(document.getElementById('vc-busca')||{}).value||'';
+  const b=busca.trim().toLowerCase();
+  return voucherDB.filter(v=>{
+    const st=statusVoucher(v);
+    const filtOk=vcFiltro==='todos'||st===vcFiltro;
+    const buscaOk=!b||v.nome.toLowerCase().includes(b)||v.cpf.includes(b)||v.codigo.toLowerCase().includes(b);
+    return filtOk&&buscaOk;
+  });
+}
+
+function renderTabelaVouchers(){
+  if(!window._fbReady){
+    const tbody=document.getElementById('vc-tbody');
+    if(tbody)tbody.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--txt2)">🔄 Conectando ao banco de dados...</td></tr>';
+    return;
+  }
+  const lista=getVouchersFiltrados();
+  const tbody=document.getElementById('vc-tbody');
+  const vazio=document.getElementById('vc-vazio');
+  // Stats
+  const total=voucherDB.length;
+  const ativos=voucherDB.filter(v=>statusVoucher(v)==='ativo').length;
+  const usados=voucherDB.filter(v=>statusVoucher(v)==='usado').length;
+  const expirados=voucherDB.filter(v=>statusVoucher(v)==='expirado').length;
+  document.getElementById('vs-total').textContent=total;
+  document.getElementById('vs-ativos').textContent=ativos;
+  document.getElementById('vs-usados').textContent=usados;
+  document.getElementById('vs-expirados').textContent=expirados;
+  // Table
+  if(!lista.length){tbody.innerHTML='';vazio.style.display='block';return;}
+  vazio.style.display='none';
+  tbody.innerHTML=lista.map((v,i)=>{
+    const st=statusVoucher(v);
+    const badgeCls='vc-badge vc-badge-'+st;
+    const badgeTxt=st==='ativo'?'✅ Ativo':st==='usado'?'🔵 Usado':'⛔ Expirado';
+    const usarBtn=st==='ativo'?`<button class="vc-act vc-act-usar" onclick="marcarUsado('${v.id}')">✔ Marcar Usado</button>`:'';
+    return `<tr>
+      <td style="color:var(--txt3);font-size:11px">${voucherDB.indexOf(v)+1}</td>
+      <td><span class="vc-code">${v.codigo}</span></td>
+      <td><strong>${v.nome}</strong></td>
+      <td style="color:var(--txt2);font-family:monospace">${v.cpf}</td>
+      <td style="color:var(--txt2);font-size:11px">${fmtDataHora(v.criado)}</td>
+      <td style="font-size:11px">
+        <div style="color:${st==='expirado'?'#ff4081':st==='ativo'?'#00e676':'var(--txt2)'}">${fmtDataHora(v.validade)}</div>
+        ${st==='ativo'?`<div style="font-size:10px;color:var(--amarelo);margin-top:2px">⏱ ${tempoRestante(v.validade)}</div>`:''}
+      </td>
+      <td><span class="${badgeCls}">${badgeTxt}</span>${v.usado&&v.usadoEm?`<div style="font-size:10px;color:var(--txt3);margin-top:3px">em ${fmtDataHora(v.usadoEm)}</div>`:''}</td>
+      <td>
+        <div class="vc-actions">
+          ${usarBtn}
+          <button class="vc-act vc-act-whats" onclick="enviarWhatsVoucher('${v.id}')">📲 WhatsApp</button>
+          <button class="vc-act vc-act-copiar" onclick="copiarTextoVoucher('${v.id}')">📋 Copiar</button>
+          <button class="vc-act vc-act-copiar" onclick="abrirVoucherModalById('${v.id}')" style="border-color:#3d3000;color:#ffd200">👁 Ver</button>
+          <button class="vc-act vc-act-del" onclick="excluirVoucher('${v.id}')">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function marcarUsado(id){
+  const v=voucherDB.find(x=>x.id==id);
+  if(!v)return;
+  if(v.usado){alert('Este voucher já foi marcado como usado.');return;}
+  if(confirm(`Confirmar uso do voucher ${v.codigo} para ${v.nome}?`)){
+    const updates={usado:true,usadoEm:new Date().toISOString()};
+    const { doc, updateDoc, vouchersCol } = window._fb;
+    updateDoc(doc(vouchersCol, String(id)), updates)
+      .then(()=>renderTabelaVouchers())
+      .catch(err=>alert('Erro ao atualizar: '+err.message));
+  }
+}
+
+function excluirVoucher(id){
+  if(!confirm('Excluir este voucher?'))return;
+  const { doc, deleteDoc, vouchersCol } = window._fb;
+  deleteDoc(doc(vouchersCol, String(id)))
+    .then(()=>renderTabelaVouchers())
+    .catch(err=>alert('Erro ao excluir: '+err.message));
+}
+
+function limparTodosVouchers(){
+  if(!confirm('Tem certeza que deseja excluir TODOS os vouchers? Esta ação não pode ser desfeita.'))return;
+  const { doc, deleteDoc, vouchersCol } = window._fb;
+  Promise.all(voucherDB.map(v=>deleteDoc(doc(vouchersCol, String(v.id)))))
+    .then(()=>renderTabelaVouchers())
+    .catch(err=>alert('Erro ao limpar vouchers: '+err.message));
+}
+
+function getTextoVoucherObj(v){
+  const st=statusVoucher(v);
+  const stTxt=st==='ativo'?'ATIVO':st==='usado'?'JA UTILIZADO':'EXPIRADO';
+  const restante=st==='ativo'?tempoRestante(v.validade):'—';
+  const urgPfx=v.horasValidade<=12?'ATENCAO — EXPIRA EM BREVE':v.horasValidade<=24?'OFERTA POR TEMPO LIMITADO':'VOUCHER EXCLUSIVO';
+  return `*FACILITA CELL — VOUCHER EXCLUSIVO*\n\n*${urgPfx}*\n\nOla, ${v.nome}!\n\nVoce recebeu um voucher com *50% DE DESCONTO NA PRIMEIRA PARCELA* do seu celular novo!\n\n----------------------------\n*SEU CODIGO: ${v.codigo}*\n----------------------------\n\nCliente: *${v.nome}*\nCPF: ${v.cpf}\nValido ate: *${fmtDataHora(v.validade)}*\nExpira em: *${restante}*\nStatus: ${stTxt}\n\nIMPORTANTE: Apresente este codigo na loja. Sem o codigo o desconto NAO sera aplicado.\n\nParcelamento em ate 18x no boleto\nSem cartao de credito\nAprovacao na hora\n\n----------------------------\nFACILITA CELL\nAv. Morenitas, 78 - Jardim das Flores, Porto Meira\nEm frente ao Panorama\nHorario: 9h as 17h50 (sem fechar pro almoco)\n----------------------------`;
+}
+
+function enviarWhatsVoucher(id){
+  const v=voucherDB.find(x=>x.id==id);if(!v)return;
+  window.open('https://wa.me/?text='+encodeURIComponent(getTextoVoucherObj(v)),'_blank');
+}
+
+function copiarTextoVoucher(id){
+  const v=voucherDB.find(x=>x.id==id);if(!v)return;
+  navigator.clipboard.writeText(getTextoVoucherObj(v)).catch(()=>{});
+  alert('Texto do voucher copiado!');
+}
+
+// ---- VOUCHER DISPLAY MODAL ----
+function abrirVoucherModalById(id){
+  const v=voucherDB.find(x=>x.id==id);if(!v)return;
+  abrirVoucherModal(v);
+}
+
+function abrirVoucherModal(v){
+  voucherAtual=v;
+  const st=statusVoucher(v);
+  document.getElementById('vm-nome').textContent=v.nome;
+  document.getElementById('vm-cpf').textContent=v.cpf;
+  document.getElementById('vm-code').textContent=v.codigo;
+
+  // Right side date
+  const dataEl=document.getElementById('vm-data-right');
+  if(dataEl)dataEl.textContent=fmtDataHora(v.validade);
+
+  // Right side urgency
+  const urgRightEl=document.getElementById('vm-urgencia-right');
+  if(urgRightEl){
+    if(st==='ativo'){
+      const diff=new Date(v.validade)-new Date();
+      const hLeft=diff/3600000;
+      urgRightEl.textContent='⏱ '+tempoRestante(v.validade);
+      urgRightEl.style.color=hLeft<=6?'#ffcccc':hLeft<=24?'#ffe066':'rgba(255,255,255,.8)';
+    } else urgRightEl.textContent='';
+  }
+
+  // Right side status badge
+  const stRightEl=document.getElementById('vm-status-right');
+  if(stRightEl){
+    if(st==='ativo'){stRightEl.innerHTML='<span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:10px;background:rgba(0,200,80,.25);color:#69f0ae;border:1px solid rgba(0,200,80,.4);text-transform:uppercase;letter-spacing:.5px">✅ ATIVO</span>';}
+    else if(st==='usado'){stRightEl.innerHTML='<span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:10px;background:rgba(0,150,255,.2);color:#90caf9;border:1px solid rgba(0,150,255,.4);text-transform:uppercase;letter-spacing:.5px">🔵 USADO</span>';}
+    else{stRightEl.innerHTML='<span style="font-size:10px;font-weight:800;padding:3px 10px;border-radius:10px;background:rgba(255,50,80,.2);color:#ff8a80;border:1px solid rgba(255,50,80,.4);text-transform:uppercase;letter-spacing:.5px">⛔ EXPIRADO</span>';}
+  }
+
+  // Legacy elements (keep for compat)
+  const stEl=document.getElementById('vm-status');
+  if(stEl){
+    if(st==='ativo'){stEl.textContent='ATIVO';stEl.style.cssText='font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7';}
+    else if(st==='usado'){stEl.textContent='JA UTILIZADO';stEl.style.cssText='font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9';}
+    else{stEl.textContent='EXPIRADO';stEl.style.cssText='font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;text-transform:uppercase;letter-spacing:.8px;background:#fce4ec;color:#c62828;border:1px solid #ef9a9a';}
+  }
+  const urgEl=document.getElementById('vm-urgencia');
+  if(urgEl){
+    if(st==='ativo'){
+      const diff=new Date(v.validade)-new Date();
+      const hLeft=diff/3600000;
+      urgEl.textContent=(hLeft<=6?'URGENTE — ':'')+'Expira em: '+tempoRestante(v.validade);
+      urgEl.style.color=hLeft<=6?'#c62828':hLeft<=24?'#e65100':'#ff6a00';
+    } else urgEl.textContent='';
+  }
+
+  const btn=document.getElementById('vm-btn-copia');
+  btn.classList.remove('ok');btn.innerHTML='📋 Copiar texto';
+  document.getElementById('voucher-overlay').classList.add('show');
+}
+
+function exportarVoucherImagem(){
+  const btn=document.getElementById('vm-btn-imagem');
+  btn.textContent='Gerando imagem...';btn.disabled=true;
+  try {
+    _desenharVoucherCanvas(btn);
+  } catch(e) {
+    btn.textContent='⬇ Salvar Voucher como Imagem (PNG)';btn.disabled=false;
+    alert('Erro ao gerar imagem: '+e.message);
+  }
+}
+
+function _rRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function _desenharVoucherCanvas(btn) {
+  const v = voucherAtual;
+  if(!v){btn.textContent='⬇ Salvar Voucher como Imagem (PNG)';btn.disabled=false;return;}
+
+  const st = statusVoucher(v);
+  const W = 1560, H = 720;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const c = canvas.getContext('2d');
+
+  // ── HELPERS ──────────────────────────────────────────────────
+  function gLinear(x0,y0,x1,y1,stops){
+    const g=c.createLinearGradient(x0,y0,x1,y1);
+    stops.forEach(([t,col])=>g.addColorStop(t,col));
+    return g;
+  }
+  function gRadial(x,y,r0,r1,stops){
+    const g=c.createRadialGradient(x,y,r0,x,y,r1);
+    stops.forEach(([t,col])=>g.addColorStop(t,col));
+    return g;
+  }
+  function shadow(col,blur,ox,oy){c.shadowColor=col;c.shadowBlur=blur;c.shadowOffsetX=ox;c.shadowOffsetY=oy;}
+  function noShadow(){c.shadowColor='transparent';c.shadowBlur=0;c.shadowOffsetX=0;c.shadowOffsetY=0;}
+
+  // ── BACKGROUND ───────────────────────────────────────────────
+  // Card base
+  c.fillStyle='#0d0d0d';
+  _rRect(c,0,0,W,H,28);c.fill();
+
+  // Left dark section
+  c.fillStyle='#111111';
+  c.fillRect(0,0,1090,H);
+
+  // Subtle warm glow top-left
+  const glowL = gRadial(200,180,0,420,[[0,'rgba(255,120,0,0.13)'],[1,'rgba(0,0,0,0)']]);
+  c.fillStyle=glowL; c.fillRect(0,0,1090,H);
+
+  // ── PERFORATED DIVIDER ───────────────────────────────────────
+  const DX = 1094;
+  c.setLineDash([14,10]);
+  c.strokeStyle='rgba(255,140,0,0.4)';
+  c.lineWidth=3;
+  c.beginPath();c.moveTo(DX,40);c.lineTo(DX,H-40);c.stroke();
+  c.setLineDash([]);
+  // Holes
+  [0,H].forEach(ey=>{
+    c.fillStyle='#0d0d0d';
+    c.beginPath();c.arc(DX,ey===0?0:H,22,0,Math.PI*2);c.fill();
+  });
+
+  // ── RIGHT ORANGE PANEL ───────────────────────────────────────
+  const rightGrad = gLinear(1094,0,W,H,[[0,'#ff9500'],[0.5,'#ff6200'],[1,'#e04500']]);
+  c.save();
+  _rRect(c,1094,0,W-1094,H,0);
+  c.clip();
+  c.fillStyle=rightGrad; c.fillRect(1094,0,W-1094,H);
+  // Sunray lines
+  c.save();
+  c.globalAlpha=0.07;
+  c.strokeStyle='#fff'; c.lineWidth=18;
+  for(let i=0;i<20;i++){
+    c.beginPath();
+    c.moveTo(1320,H/2);
+    const ang = (i/20)*Math.PI*2;
+    c.lineTo(1320+Math.cos(ang)*700,H/2+Math.sin(ang)*700);
+    c.stroke();
+  }
+  c.restore();
+  c.restore();
+
+  // ── % TAG (top-right) ────────────────────────────────────────
+  const tagX=1215, tagY=50, tagW=150, tagH=160;
+  // Black tag body
+  c.fillStyle='#111';
+  shadow('#000',30,0,8);
+  _rRect(c,tagX,tagY+20,tagW,tagH,18);c.fill();
+  noShadow();
+  // Orange border
+  c.strokeStyle='#ff7700';c.lineWidth=3;
+  _rRect(c,tagX,tagY+20,tagW,tagH,18);c.stroke();
+  // Hole at top
+  c.fillStyle='#ff6a00';
+  c.beginPath();c.arc(tagX+tagW/2,tagY+26,10,0,Math.PI*2);c.fill();
+  c.fillStyle='#111';
+  c.beginPath();c.arc(tagX+tagW/2,tagY+26,5,0,Math.PI*2);c.fill();
+  // String
+  c.strokeStyle='#555';c.lineWidth=4;c.setLineDash([]);
+  c.beginPath();c.moveTo(tagX+tagW/2,tagY);c.lineTo(tagX+tagW/2,tagY+22);c.stroke();
+  // % symbol
+  c.fillStyle='#ff8800';
+  c.font='bold 80px Nunito, Arial';
+  c.textAlign='center';c.textBaseline='middle';
+  c.fillText('%',tagX+tagW/2,tagY+20+tagH/2+10);
+
+  // ── USO ÚNICO BOX ────────────────────────────────────────────
+  const b1x=1108,b1y=250,b1w=434,b1h=90;
+  c.fillStyle='rgba(0,0,0,0.35)';
+  _rRect(c,b1x,b1y,b1w,b1h,14);c.fill();
+  c.strokeStyle='rgba(255,255,255,0.45)';c.lineWidth=2.5;
+  _rRect(c,b1x,b1y,b1w,b1h,14);c.stroke();
+  // Check circle
+  c.fillStyle='#ff6a00';
+  c.beginPath();c.arc(b1x+38,b1y+b1h/2,22,0,Math.PI*2);c.fill();
+  c.fillStyle='#fff';c.font='bold 22px Arial';c.textAlign='center';c.textBaseline='middle';
+  c.fillText('✓',b1x+38,b1y+b1h/2);
+  // Text
+  c.fillStyle='#fff';c.font='bold 26px Nunito, Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillText('USO ÚNICO',b1x+72,b1y+b1h/2-14);
+  c.fillText('POR CLIENTE!',b1x+72,b1y+b1h/2+18);
+  // Lightning bolts right
+  [b1y+b1h/2-14,b1y+b1h/2,b1y+b1h/2+14].forEach((ly,i)=>{
+    c.fillStyle=i===1?'rgba(255,255,255,.3)':'rgba(255,255,255,.5)';
+    c.fillRect(b1x+b1w+6,ly-3,i===1?14:18,5);
+  });
+
+  // ── VÁLIDO ATÉ BOX ───────────────────────────────────────────
+  const b2x=1108,b2y=358,b2w=434,b2h=110;
+  c.fillStyle='rgba(0,0,0,0.25)';
+  _rRect(c,b2x,b2y,b2w,b2h,14);c.fill();
+  // Lock icon
+  c.fillStyle='#fff';c.font='32px Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillText('🔒',b2x+14,b2y+30);
+  c.fillStyle='#fff';c.font='bold 22px Nunito, Arial';c.textBaseline='middle';
+  c.fillText('VÁLIDO ATÉ:',b2x+58,b2y+30);
+  // Date white box
+  c.fillStyle='#fff';
+  _rRect(c,b2x+12,b2y+52,b2w-24,42,8);c.fill();
+  c.fillStyle='#222';c.font='bold 22px monospace';c.textAlign='center';c.textBaseline='middle';
+  c.fillText(fmtDataHora(v.validade),b2x+b2w/2,b2y+52+21);
+  // Urgência
+  if(st==='ativo'){
+    const diff=new Date(v.validade)-new Date(); const hL=diff/3600000;
+    const urgTxt='⏱ '+tempoRestante(v.validade);
+    c.fillStyle=hL<=6?'#ffcccc':hL<=24?'#ffe066':'rgba(255,255,255,0.85)';
+    c.font='bold 17px Nunito, Arial';c.textAlign='center';c.textBaseline='middle';
+    c.fillText(urgTxt,b2x+b2w/2,b2y+b2h-14);
+  }
+
+  // ── FACILITA CELL BRAND (bottom-right) ───────────────────────
+  const b3x=1108,b3y=488,b3w=434,b3h=80;
+  c.fillStyle='rgba(0,0,0,0.35)';
+  _rRect(c,b3x,b3y,b3w,b3h,14);c.fill();
+  // Phone icon box
+  c.fillStyle='#111';
+  _rRect(c,b3x+14,b3y+12,56,56,10);c.fill();
+  c.strokeStyle='#fff';c.lineWidth=2;
+  _rRect(c,b3x+14,b3y+12,56,56,10);c.stroke();
+  c.fillStyle='#fff';c.font='28px Arial';c.textAlign='center';c.textBaseline='middle';
+  c.fillText('✓',b3x+42,b3y+40);
+  // Text
+  c.fillStyle='#fff';c.font='bold 30px Bebas Neue, Arial';c.textAlign='left';c.textBaseline='top';
+  c.fillText('Facilita Cell',b3x+82,b3y+12);
+  c.fillStyle='rgba(255,255,255,0.75)';c.font='17px Nunito, Arial';c.textBaseline='top';
+  c.fillText('Conectando você ao melhor!',b3x+82,b3y+46);
+
+  // ── GIFT BOX ICON (left) ─────────────────────────────────────
+  c.font='80px Arial';c.textAlign='left';c.textBaseline='top';
+  c.fillStyle='#fff';
+  c.fillText('🎁',36,28);
+
+  // ── VOUCHER TITLE ────────────────────────────────────────────
+  // "VOUCHER" — big metallic white
+  c.save();
+  const vGrad = gLinear(170,30,170,130,[[0,'#ffffff'],[0.4,'#eeeeee'],[0.6,'#cccccc'],[1,'#aaaaaa']]);
+  c.fillStyle=vGrad;
+  c.font='bold 110px Bebas Neue, Arial Black, Arial';
+  c.textAlign='left';c.textBaseline='top';
+  shadow('rgba(0,0,0,0.7)',18,4,6);
+  c.fillText('VOUCHER',170,16);
+  noShadow();
+  c.restore();
+
+  // "de Desconto" — orange italic script style
+  c.save();
+  const dGrad = gLinear(200,120,200,175,[[0,'#ffcc00'],[0.5,'#ff9900'],[1,'#ff6600']]);
+  c.fillStyle=dGrad;
+  c.font='italic bold 62px Georgia, serif';
+  c.textAlign='left';c.textBaseline='top';
+  shadow('rgba(0,0,0,0.6)',12,3,4);
+  c.fillText('de Desconto',190,110);
+  noShadow();
+  c.restore();
+
+  // Sparkles near title
+  c.fillStyle='#ffcc44';
+  [[780,60,6],[820,40,4],[800,30,5]].forEach(([sx,sy,sr])=>{
+    c.beginPath();c.arc(sx,sy,sr,0,Math.PI*2);c.fill();
+  });
+
+  // Subtitle
+  c.fillStyle='#cccccc';
+  c.font='26px Nunito, Arial';c.textAlign='left';c.textBaseline='top';
+  c.fillText('Você ganhou um benefício exclusivo!  ✦',36,182);
+
+  // ── BIG 50% BOX ──────────────────────────────────────────────
+  const bx=30,by=228,bw=700,bh=148;
+  // Dark bg
+  c.fillStyle='#1a1000';
+  _rRect(c,bx,by,bw,bh,18);c.fill();
+  c.strokeStyle='rgba(255,140,0,.4)';c.lineWidth=2;
+  _rRect(c,bx,by,bw,bh,18);c.stroke();
+
+  // 50% — giant metallic with 3D effect
+  c.save();
+  const numGrad = gLinear(bx+10,by,bx+10,by+bh,
+    [[0,'#ffffff'],[0.15,'#f5f5f5'],[0.45,'#cccccc'],[0.55,'#aaaaaa'],[0.75,'#e8e8e8'],[1,'#999999']]);
+  c.fillStyle=numGrad;
+  c.font='bold 138px Bebas Neue, Arial Black, Arial';
+  c.textAlign='left';c.textBaseline='middle';
+  shadow('rgba(0,0,0,0.9)',20,4,8);
+  c.fillText('50%',bx+18,by+bh/2+8);
+  noShadow();
+  c.restore();
+
+  // "DE DESCONTO" text
+  c.fillStyle='#ffffff';
+  c.font='bold 34px Nunito, Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillText('DE DESCONTO',bx+300,by+bh/2-22);
+
+  // "NA PRIMEIRA PARCELA!" pill
+  const pillX=bx+298, pillY=by+bh/2+8, pillW=358, pillH=46;
+  const pillGrad = gLinear(pillX,pillY,pillX+pillW,pillY,[[0,'#ff6a00'],[1,'#ff9900']]);
+  c.fillStyle=pillGrad;
+  _rRect(c,pillX,pillY,pillW,pillH,10);c.fill();
+  c.fillStyle='#ffffff';
+  c.font='bold 22px Nunito, Arial';c.textAlign='center';c.textBaseline='middle';
+  c.fillText('NA PRIMEIRA PARCELA!',pillX+pillW/2,pillY+pillH/2);
+
+  // ── 4 ICONS ROW ──────────────────────────────────────────────
+  const icons=[
+    {emoji:'%', label:['Desconto somente na','primeira parcela']},
+    {emoji:'👤', label:['Válido apenas','para novos clientes']},
+    {emoji:'🛡', label:['Não cumulativo com','outras promoções']},
+    {emoji:'★', label:['Uso único','por CPF/cliente']},
+  ];
+  const iconY=400;
+  icons.forEach((ic,i)=>{
+    const ix=46+i*250;
+    // Circle
+    c.strokeStyle='#ff8800';c.lineWidth=3;
+    c.beginPath();c.arc(ix+30,iconY+30,28,0,Math.PI*2);c.stroke();
+    c.fillStyle='#ff8800';c.font='bold 26px Arial';c.textAlign='center';c.textBaseline='middle';
+    c.fillText(ic.emoji,ix+30,iconY+30);
+    // Label
+    c.fillStyle='#bbbbbb';c.font='18px Nunito, Arial';c.textAlign='center';c.textBaseline='top';
+    ic.label.forEach((ln,li)=>c.fillText(ln,ix+30,iconY+66+li*22));
+  });
+
+  // ── CODE BOX ─────────────────────────────────────────────────
+  const cx2=30,cy2=542,cw2=500,ch2=88;
+  const codeGrad = gLinear(cx2,cy2,cx2+cw2,cy2,[[0,'#1a0d00'],[1,'#2a1500']]);
+  c.fillStyle=codeGrad;
+  _rRect(c,cx2,cy2,cw2,ch2,16);c.fill();
+  c.strokeStyle='#ff6a00';c.lineWidth=3;
+  _rRect(c,cx2,cy2,cw2,ch2,16);c.stroke();
+  // Ticket icon
+  c.font='36px Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillStyle='#ff8800';
+  c.fillText('🎫',cx2+16,cy2+ch2/2);
+  // CÓDIGO label
+  c.fillStyle='#ff9900';c.font='bold 18px Nunito, Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillText('CÓDIGO:',cx2+68,cy2+ch2/2-18);
+  // Code value
+  c.fillStyle='#ffd200';
+  c.font='bold 46px Bebas Neue, Arial Black, Arial';
+  c.textBaseline='middle';
+  c.fillText(v.codigo,cx2+68,cy2+ch2/2+18);
+
+  // "Aproveite seu benefício!" script
+  c.save();
+  c.fillStyle='#dddddd';
+  c.font='italic 34px Georgia, serif';c.textAlign='left';c.textBaseline='middle';
+  shadow('rgba(0,0,0,.5)',8,2,3);
+  c.fillText('Aproveite seu benefício!',550,cy2+ch2/2-10);
+  noShadow();
+  c.restore();
+  c.fillStyle='#ff6699';c.font='28px Arial';c.textAlign='left';c.textBaseline='middle';
+  c.fillText('🩷',850,cy2+ch2/2+20);
+
+  // ── BOTTOM STRIP (client data) ────────────────────────────────
+  c.fillStyle='rgba(255,255,255,0.04)';
+  c.fillRect(0,650,1090,H-650);
+  c.strokeStyle='rgba(255,140,0,.2)';c.lineWidth=1.5;
+  c.beginPath();c.moveTo(0,652);c.lineTo(1090,652);c.stroke();
+
+  // Client info
+  const infos=[
+    {icon:'👤', label:'Cliente', val:v.nome},
+    {icon:'🪪', label:'CPF', val:v.cpf},
+    {icon:'📍', label:'Loja', val:'Av. Morenitas, 78 — Porto Meira'},
+  ];
+  infos.forEach((inf,i)=>{
+    const ix=30+i*340;
+    c.font='28px Arial';c.textAlign='left';c.textBaseline='middle';
+    c.fillStyle='#fff';c.fillText(inf.icon,ix,672);
+    c.fillStyle='#888';c.font='16px Nunito, Arial';c.textBaseline='middle';
+    c.fillText(inf.label,ix+38,660);
+    c.fillStyle='#ffffff';c.font='bold 22px Nunito, Arial';
+    c.fillText(inf.val,ix+38,680);
+  });
+
+  // Warning box bottom right
+  c.fillStyle='rgba(255,106,0,.1)';
+  _rRect(c,700,654,368,H-658,10);c.fill();
+  c.strokeStyle='rgba(255,106,0,.35)';c.lineWidth=1.5;
+  _rRect(c,700,654,368,H-658,10);c.stroke();
+  c.fillStyle='#ff9900';c.font='bold 17px Nunito, Arial';c.textAlign='center';c.textBaseline='middle';
+  c.fillText('⚠️ Apresente na loja',884,672);
+  c.fillStyle='#888';c.font='15px Nunito, Arial';
+  c.fillText('Sem o voucher o desconto não é aplicado',884,690);
+
+  // ── ROUNDED CLIP ─────────────────────────────────────────────
+  // Re-clip to card shape with rounded corners
+  c.save();
+  c.globalCompositeOperation='destination-in';
+  _rRect(c,0,0,W,H,28);c.fill();
+  c.restore();
+
+  // ── DOWNLOAD ─────────────────────────────────────────────────
+  const link=document.createElement('a');
+  link.download='voucher-'+v.codigo+'.png';
+  link.href=canvas.toDataURL('image/png');
+  link.click();
+  btn.textContent='⬇ Salvar Voucher como Imagem (PNG)';
+  btn.disabled=false;
+}
+
+function fecharVoucher(){document.getElementById('voucher-overlay').classList.remove('show');}
+
+let _voucherValidado=null;
+
+function validarVoucher(){
+  const codigo=document.getElementById('vc-val-codigo').value.trim().toUpperCase();
+  const resDiv=document.getElementById('vc-resultado-validacao');
+  const btnUsar=document.getElementById('vc-btn-usar-direto');
+  _voucherValidado=null;
+  btnUsar.style.display='none';
+  if(!codigo){alert('Digite o código do voucher!');return;}
+  const v=voucherDB.find(x=>x.codigo===codigo);
+  resDiv.style.display='block';
+  if(!v){
+    resDiv.className='vc-resultado vc-resultado-nao';
+    resDiv.innerHTML='<div class="vc-res-titulo" style="color:#ff9900">⚠️ VOUCHER NÃO ENCONTRADO</div><div style="font-size:13px;color:var(--txt2)">O código <strong style="color:var(--amarelo);font-family:\'Bebas Neue\',sans-serif;letter-spacing:3px;font-size:18px">'+codigo+'</strong> não foi localizado no sistema. Verifique se foi digitado corretamente.</div>';
+    return;
+  }
+  const st=statusVoucher(v);
+  const restante=tempoRestante(v.validade);
+  const diff=new Date(v.validade)-new Date();
+  const hLeft=diff/3600000;
+  const urgColor=hLeft<=6?'#ff4081':hLeft<=24?'#ff9900':'#ffd200';
+  if(st==='ativo'){
+    _voucherValidado=v;
+    btnUsar.style.display='inline-flex';
+    resDiv.className='vc-resultado vc-resultado-ativo';
+    resDiv.innerHTML=`
+      <div style="text-align:center;padding:10px 0 16px">
+        <div style="font-size:11px;font-weight:800;color:var(--txt3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">🔑 CÓDIGO VALIDADO</div>
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:44px;letter-spacing:10px;color:var(--amarelo);background:rgba(255,210,0,.08);border:2px dashed rgba(255,210,0,.4);border-radius:14px;padding:10px 22px;display:inline-block;margin-bottom:10px">${v.codigo}</div>
+        <div style="font-size:14px;font-weight:800;color:#00e676;margin-bottom:6px">✅ VOUCHER VÁLIDO — PODE APLICAR O DESCONTO!</div>
+        <div style="font-size:13px;font-weight:800;color:${urgColor}">⏱ Expira em: ${restante}</div>
+      </div>
+      <div class="vc-res-grid">
+        <div class="vc-res-item"><div class="vc-res-label">👤 Cliente</div><div class="vc-res-val">${v.nome}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">🪪 CPF</div><div class="vc-res-val" style="font-family:monospace">${v.cpf}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">📅 Criado em</div><div class="vc-res-val" style="font-size:12px">${fmtDataHora(v.criado)}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">⏰ Válido até</div><div class="vc-res-val" style="font-size:12px;color:${urgColor}">${fmtDataHora(v.validade)}</div></div>
+      </div>`;
+  } else if(st==='usado'){
+    resDiv.className='vc-resultado vc-resultado-usado';
+    resDiv.innerHTML=`
+      <div style="text-align:center;padding:6px 0 14px">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:8px;color:#40c4ff;opacity:.45;margin-bottom:8px">${v.codigo}</div>
+        <div class="vc-res-titulo" style="color:#40c4ff">🔵 VOUCHER JÁ UTILIZADO</div>
+        <div style="font-size:12px;color:var(--txt2)">Este voucher já foi resgatado e não pode ser usado novamente.</div>
+      </div>
+      <div class="vc-res-grid">
+        <div class="vc-res-item"><div class="vc-res-label">👤 Cliente</div><div class="vc-res-val">${v.nome}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">🪪 CPF</div><div class="vc-res-val" style="font-family:monospace">${v.cpf}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">📅 Usado em</div><div class="vc-res-val" style="font-size:12px;color:#ff4081">${v.usadoEm?fmtDataHora(v.usadoEm):'—'}</div></div>
+      </div>`;
+  } else {
+    resDiv.className='vc-resultado vc-resultado-expirado';
+    resDiv.innerHTML=`
+      <div style="text-align:center;padding:6px 0 14px">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:40px;letter-spacing:8px;color:#ff4081;opacity:.4;margin-bottom:8px">${v.codigo}</div>
+        <div class="vc-res-titulo" style="color:#ff4081">⛔ VOUCHER EXPIRADO</div>
+        <div style="font-size:12px;color:var(--txt2)">Este voucher expirou e não pode mais ser utilizado.</div>
+      </div>
+      <div class="vc-res-grid">
+        <div class="vc-res-item"><div class="vc-res-label">👤 Cliente</div><div class="vc-res-val">${v.nome}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">🪪 CPF</div><div class="vc-res-val" style="font-family:monospace">${v.cpf}</div></div>
+        <div class="vc-res-item"><div class="vc-res-label">📅 Expirou em</div><div class="vc-res-val" style="font-size:12px;color:#ff4081">${fmtDataHora(v.validade)}</div></div>
+      </div>`;
+  }
+}
+
+function usarVoucherValidado(){
+  if(!_voucherValidado)return;
+  const v=_voucherValidado;
+  if(confirm(`Confirmar uso do voucher ${v.codigo} para ${v.nome}?\n\nEsta ação não pode ser desfeita.`)){
+    const updates={usado:true,usadoEm:new Date().toISOString()};
+    const { doc, updateDoc, vouchersCol } = window._fb;
+    updateDoc(doc(vouchersCol, String(v.id)), updates).then(()=>{
+      _voucherValidado=null;
+      document.getElementById('vc-btn-usar-direto').style.display='none';
+      validarVoucher();
+      renderTabelaVouchers();
+    }).catch(err=>alert('Erro ao usar voucher: '+err.message));
+  }
+}
+
+function copiarVoucher(){
+  if(!voucherAtual)return;
+  navigator.clipboard.writeText(getTextoVoucherObj(voucherAtual)).catch(()=>{});
+  const btn=document.getElementById('vm-btn-copia');
+  btn.classList.add('ok');btn.innerHTML='✓ Copiado!';
+  setTimeout(()=>{btn.classList.remove('ok');btn.innerHTML='📋 Copiar texto';},2500);
+}
+
+function compartilharWhats(){
+  if(!voucherAtual)return;
+  window.open('https://wa.me/?text='+encodeURIComponent(getTextoVoucherObj(voucherAtual)),'_blank');
+}
+
+// ---- VOUCHER PICKER (preencher mensagem automaticamente) ----
+let _vpMsgId = null;
+
+function abrirVoucherPick(msgId){
+  _vpMsgId = msgId;
+  document.getElementById('vp-preview').style.display='none';
+  const lista = document.getElementById('vp-lista');
+  const ativos = voucherDB.filter(v=>statusVoucher(v)==='ativo');
+  if(!ativos.length){
+    lista.innerHTML='<div style="text-align:center;padding:20px;color:var(--txt2);font-size:13px">⚠️ Nenhum voucher ativo encontrado.<br><span style="font-size:12px">Gere um voucher na aba <strong style="color:var(--amarelo)">Controle de Vouchers</strong> primeiro.</span></div>';
+  } else {
+    lista.innerHTML = ativos.map(v=>{
+      const diff = new Date(v.validade)-new Date();
+      const hLeft = diff/3600000;
+      const urgColor = hLeft<=6?'#ff4081':hLeft<=24?'#ff9900':'#ffd200';
+      const restante = tempoRestante(v.validade);
+      return `<div style="background:var(--card2);border:1px solid var(--borda);border-radius:10px;padding:12px 14px;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:space-between;gap:10px"
+        onmouseover="this.style.borderColor='${urgColor}'" onmouseout="this.style.borderColor='var(--borda)'"
+        onclick="selecionarVoucherPick('${v.id}')">
+        <div>
+          <div style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:4px;color:var(--amarelo)">${v.codigo}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--txt)">${v.nome} &nbsp;•&nbsp; <span style="font-family:monospace;color:var(--txt2)">${v.cpf}</span></div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;font-weight:800;color:${urgColor}">⏱ ${restante}</div>
+          <div style="font-size:10px;color:var(--txt3);margin-top:2px">Válido até ${fmtDataHora(v.validade)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('overlay-voucher-pick').classList.add('show');
+}
+
+function selecionarVoucherPick(vId){
+  const v = voucherDB.find(x=>String(x.id)===String(vId));
+  if(!v||!_vpMsgId)return;
+  const m = mensagens.find(x=>x.id===_vpMsgId);
+  if(!m)return;
+  const diff = new Date(v.validade)-new Date();
+  const hLeft = Math.max(1,Math.round(diff/3600000));
+  let txt = m.texto
+    .replace(/\[CODIGO_VOUCHER\]/g, v.codigo)
+    .replace(/\[HORAS\]/g, hLeft+'h')
+    .replace(/\[NOME\]/g, v.nome);
+  document.getElementById('vp-texto-final').value = txt;
+  document.getElementById('vp-preview').style.display='block';
+  // highlight selected card
+  document.querySelectorAll('#vp-lista > div').forEach(d=>d.style.background='var(--card2)');
+  event.currentTarget.style.background='rgba(255,210,0,.07)';
+}
+
+function copiarMsgVoucher(){
+  const txt = document.getElementById('vp-texto-final').value + LOJA_RODAPE;
+  navigator.clipboard.writeText(txt).catch(()=>{});
+  totalCopiados++;
+  document.getElementById('tot-copiados').textContent=totalCopiados;
+  const btn = event.currentTarget;
+  const orig = btn.innerHTML;
+  btn.innerHTML='✓ Copiado!';
+  btn.style.background='var(--verde)';
+  setTimeout(()=>{btn.innerHTML=orig;btn.style.background='';},2000);
+}
+
+function whatsappMsgVoucher(){
+  const txt = document.getElementById('vp-texto-final').value + LOJA_RODAPE;
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+}
+
+function fecharVoucherPick(){
+  document.getElementById('overlay-voucher-pick').classList.remove('show');
+  _vpMsgId=null;
+}
+
+document.getElementById('overlay-voucher-pick').addEventListener('click',function(e){if(e.target===this)fecharVoucherPick();});
+document.getElementById('voucher-overlay').addEventListener('click',function(e){if(e.target===this)fecharVoucher();});
+document.getElementById('busca').addEventListener('input',renderGrid);
+document.getElementById('overlay').addEventListener('click',function(e){if(e.target===this)fecharModal();});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){fecharModal();fecharVoucherPick();}});
+renderAll();
+</script>
+</body>
+</html>
